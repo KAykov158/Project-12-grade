@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, Modal, Select, Badge } from '../components/ui';
-import { matchesService, teamsService, usersService, notificationsService } from '../firebase';
+import { matchesService, teamsService, usersService, notificationsService } from '../supabase';
 import { Match, Team, User, RefereeAssignment, LeagueType } from '../types';
 import { Plus, Check, X, MapPin, Calendar as CalendarIcon, UserCircle, Trash2, Edit2 } from 'lucide-react';
 
@@ -24,9 +24,14 @@ export const MatchesPage: React.FC = () => {
   });
 
   useEffect(() => {
-    matchesService.subscribe(setMatches);
-    teamsService.subscribe(setTeams);
-    usersService.subscribe((users) => setReferees(users.filter(u => u.role === 'referee')));
+    const unsubMatches = matchesService.subscribe(setMatches);
+    const unsubTeams = teamsService.subscribe(setTeams);
+    const unsubReferees = usersService.subscribeByRole('referee', setReferees);
+    return () => {
+      unsubMatches();
+      unsubTeams();
+      unsubReferees();
+    };
   }, []);
 
   const canManage = userData?.role === 'admin';
@@ -41,20 +46,25 @@ export const MatchesPage: React.FC = () => {
       alert('Please select both home and away divisions');
       return;
     }
-    await matchesService.create({
-      homeTeamId: formData.homeTeamId,
-      awayTeamId: formData.awayTeamId,
-      homeTeamName: selectedHomeTeam?.name || '',
-      awayTeamName: selectedAwayTeam?.name || '',
-      homeDivision: formData.homeDivision,
-      awayDivision: formData.awayDivision,
-      dateTime: new Date(formData.dateTime),
-      location: formData.location,
-      category: formData.category,
-      referees: [],
-      status: 'scheduled',
-      createdAt: new Date()
-    });
+    try {
+      await matchesService.create({
+        homeTeamId: formData.homeTeamId,
+        awayTeamId: formData.awayTeamId,
+        homeTeamName: selectedHomeTeam?.name || '',
+        awayTeamName: selectedAwayTeam?.name || '',
+        homeDivision: formData.homeDivision,
+        awayDivision: formData.awayDivision,
+        dateTime: new Date(formData.dateTime),
+        location: formData.location,
+        category: formData.category,
+        referees: [],
+        status: 'scheduled',
+        createdAt: new Date()
+      });
+    } catch (err) {
+      alert('Failed to create match: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      return;
+    }
     setIsModalOpen(false);
     setFormData({ homeTeamId: '', awayTeamId: '', homeDivision: '', awayDivision: '', dateTime: '', location: '', category: '' });
   };
@@ -74,15 +84,23 @@ export const MatchesPage: React.FC = () => {
     };
 
     const updatedReferees = [...(match.referees || []), newAssignment];
-    await matchesService.update(matchId, { referees: updatedReferees });
-
-    await notificationsService.create({
-      userId: refereeId,
-      title: 'New Match Assignment',
-      message: `You have been assigned as ${role} for ${match.homeTeamName} vs ${match.awayTeamName}`,
-      read: false,
-      createdAt: new Date()
-    });
+    try {
+      await matchesService.update(matchId, { referees: updatedReferees });
+    } catch (err) {
+      alert('Failed to assign referee: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
+      return;
+    }
+    try {
+      await notificationsService.create({
+        userId: refereeId,
+        title: 'New Match Assignment',
+        message: `You have been assigned as ${role} for ${match.homeTeamName} vs ${match.awayTeamName}`,
+        read: false,
+        createdAt: new Date()
+      });
+    } catch (err) {
+      console.error('Failed to send notification:', err);
+    }
   };
 
   const removeReferee = async (matchId: string, refereeId: string) => {
@@ -92,7 +110,11 @@ export const MatchesPage: React.FC = () => {
     if (!match) return;
 
     const updatedReferees = match.referees.filter(r => r.refereeId !== refereeId);
-    await matchesService.update(matchId, { referees: updatedReferees });
+    try {
+      await matchesService.update(matchId, { referees: updatedReferees });
+    } catch (err) {
+      alert('Failed to remove referee: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
   };
 
   const changeRefereeRole = async (matchId: string, refereeId: string, newRole: 'chief' | 'assistant1' | 'assistant2') => {
@@ -102,11 +124,19 @@ export const MatchesPage: React.FC = () => {
     const updatedReferees = match.referees.map(r => 
       r.refereeId === refereeId ? { ...r, role: newRole } : r
     );
-    await matchesService.update(matchId, { referees: updatedReferees });
+    try {
+      await matchesService.update(matchId, { referees: updatedReferees });
+    } catch (err) {
+      alert('Failed to change referee role: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
   };
 
   const respondToMatch = async (matchId: string, status: 'accepted' | 'declined') => {
-    await matchesService.updateRefereeStatus(matchId, userData!.id, status);
+    try {
+      await matchesService.updateRefereeStatus(matchId, userData!.id, status);
+    } catch (err) {
+      alert('Failed to respond: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
   };
 
   const availableReferees = (match: Match) => {
@@ -150,7 +180,7 @@ export const MatchesPage: React.FC = () => {
                   <h3 className="text-lg font-bold">
                     {match.homeTeamName} vs {match.awayTeamName}
                   </h3>
-                  <div className="flex items-center gap-4 text-gray-500 text-sm mt-1">
+                  <div className="flex items-center gap-4 text-gray-500 dark:text-gray-400 text-sm mt-1">
                     <span className="flex items-center gap-1">
                       <CalendarIcon className="w-4 h-4" />
                       {new Date(match.dateTime).toLocaleDateString()} {new Date(match.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -169,13 +199,13 @@ export const MatchesPage: React.FC = () => {
                   <Badge variant={match.status === 'scheduled' ? 'info' : 'success'}>
                     {match.status}
                   </Badge>
-                  <p className="text-sm text-gray-500 mt-1">{match.category}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{match.category}</p>
                 </div>
               </div>
 
               {match.result && (
-                <div className="bg-gray-100 p-3 rounded-lg text-center">
-                  <span className="text-2xl font-bold">
+                <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg text-center">
+                  <span className="text-2xl font-bold dark:text-gray-100">
                     {match.result.homeScore} - {match.result.awayScore}
                   </span>
                 </div>
@@ -183,7 +213,7 @@ export const MatchesPage: React.FC = () => {
 
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <p className="text-sm font-medium text-gray-600">Referees:</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Referees:</p>
                   {canManage && match.status === 'scheduled' && (
                     <Button 
                       size="sm" 
@@ -197,9 +227,9 @@ export const MatchesPage: React.FC = () => {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {match.referees?.length > 0 ? (
-                    match.referees.map((r, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-full">
-                        {r.refereeName}
+                    match.referees.map((r) => (
+                      <div key={r.refereeId} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 px-3 py-1 rounded-full">
+                        <span className="dark:text-gray-100">{r.refereeName}</span>
                         <Badge variant={
                           r.role === 'chief' ? 'info' : 
                           r.role === 'assistant1' ? 'warning' : 'success'
@@ -212,11 +242,11 @@ export const MatchesPage: React.FC = () => {
                           </Badge>
                         )}
                         {canManage && match.status === 'scheduled' && selectedMatch?.id === match.id && (
-                          <div className="flex items-center gap-1 ml-2 border-l pl-2">
+                          <div className="flex items-center gap-1 ml-2 border-l dark:border-gray-600 pl-2">
                             <select
                               value={r.role}
                               onChange={(e) => changeRefereeRole(match.id, r.refereeId, e.target.value as any)}
-                              className="text-xs border rounded px-1 py-0.5"
+                              className="text-xs border rounded px-1 py-0.5 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                             >
                               <option value="chief">Chief</option>
                               <option value="assistant1">Asst 1</option>
@@ -233,13 +263,13 @@ export const MatchesPage: React.FC = () => {
                       </div>
                     ))
                   ) : (
-                    <span className="text-gray-400 text-sm">No referees assigned</span>
+                    <span className="text-gray-400 dark:text-gray-500 text-sm">No referees assigned</span>
                   )}
                 </div>
               </div>
 
               {canRespond && (
-                <div className="flex gap-2 pt-2 border-t">
+                <div className="flex gap-2 pt-2 border-t dark:border-gray-600">
                   <Button size="sm" onClick={() => respondToMatch(match.id, 'accepted')}>
                     <Check className="w-4 h-4 mr-1" /> Accept
                   </Button>
@@ -250,20 +280,20 @@ export const MatchesPage: React.FC = () => {
               )}
 
               {canManage && match.status === 'scheduled' && selectedMatch?.id === match.id && (
-                <div className="border-t pt-3 mt-3 bg-gray-50 -mx-6 px-6 py-4 rounded-b-xl">
-                  <p className="text-sm font-medium mb-2">Add Referee:</p>
+                <div className="border-t dark:border-gray-600 pt-3 mt-3 bg-gray-50 dark:bg-gray-700 -mx-6 px-6 py-4 rounded-b-xl">
+                  <p className="text-sm font-medium mb-2 dark:text-gray-100">Add Referee:</p>
                   {availableReferees(match).length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {availableReferees(match).map(ref => (
-                        <div key={ref.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border">
-                          <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center overflow-hidden">
+                        <div key={ref.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border dark:border-gray-600">
+                          <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center overflow-hidden">
                             {ref.photo ? (
                               <img src={ref.photo} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <UserCircle className="w-5 h-5 text-purple-400" />
                             )}
                           </div>
-                          <span className="text-sm font-medium">{ref.name}</span>
+                          <span className="text-sm font-medium dark:text-gray-100">{ref.name}</span>
                           <div className="flex gap-1">
                             {!match.referees?.some(mr => mr.role === 'chief') && (
                               <Button size="sm" variant="outline" onClick={() => assignReferee(match.id, ref.id, 'chief')}>
@@ -285,7 +315,7 @@ export const MatchesPage: React.FC = () => {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">All referees are assigned to this match</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">All referees are assigned to this match</p>
                   )}
                 </div>
               )}
@@ -293,7 +323,7 @@ export const MatchesPage: React.FC = () => {
           );
         })}
         {filteredMatches.length === 0 && (
-          <Card><p className="text-center text-gray-500 py-8">No matches found</p></Card>
+          <Card><p className="text-center text-gray-500 dark:text-gray-400 py-8">No matches found</p></Card>
         )}
       </div>
 
@@ -310,11 +340,11 @@ export const MatchesPage: React.FC = () => {
           />
           {selectedHomeTeam && (
             <div>
-              <label className="font-medium text-sm">Home Division</label>
+              <label className="font-medium text-sm dark:text-gray-200">Home Division</label>
               <select
                 value={formData.homeDivision}
                 onChange={(e) => setFormData({ ...formData, homeDivision: e.target.value as LeagueType })}
-                className="w-full border rounded-lg px-3 py-2 mt-1"
+                className="w-full border rounded-lg px-3 py-2 mt-1 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
                 required
               >
                 <option value="">Select division</option>
@@ -339,7 +369,7 @@ export const MatchesPage: React.FC = () => {
               <select
                 value={formData.awayDivision}
                 onChange={(e) => setFormData({ ...formData, awayDivision: e.target.value as LeagueType })}
-                className="w-full border rounded-lg px-3 py-2 mt-1"
+                className="w-full border rounded-lg px-3 py-2 mt-1 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
                 required
               >
                 <option value="">Select division</option>

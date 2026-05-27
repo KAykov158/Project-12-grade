@@ -1,38 +1,38 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge } from '../components/ui';
-import { matchesService, teamsService, usersService } from '../firebase';
+import { matchesService, teamsService, usersService } from '../supabase';
 import { Match, Team, User } from '../types';
 import { Calendar, Users, Trophy, ClipboardList, ChevronRight, UserCircle } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
   const { userData } = useAuth();
+  const navigate = useNavigate();
   const [matches, setMatches] = useState<Match[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [referees, setReferees] = useState<User[]>([]);
-  const [stats, setStats] = useState({ upcoming: 0, completed: 0, pendingReferee: 0 });
   const [showReferees, setShowReferees] = useState(false);
 
   useEffect(() => {
-    const loadData = async () => {
-      const allMatches = await matchesService.getAll();
-      setMatches(allMatches);
-      setTeams(await teamsService.getAll());
-      setReferees(await usersService.getByRole('referee'));
-
-      const upcoming = allMatches.filter(m => m.status === 'scheduled').length;
-      const completed = allMatches.filter(m => m.status === 'completed').length;
-      const pendingReferee = userData?.role === 'referee' 
-        ? allMatches.filter(m => 
-            m.status === 'scheduled' && 
-            m.referees?.some(r => r.refereeId === userData.id && r.status === 'pending')
-          ).length
-        : 0;
-
-      setStats({ upcoming, completed, pendingReferee });
+    const unsubMatches = matchesService.subscribe(setMatches);
+    const unsubTeams = teamsService.subscribe(setTeams);
+    const unsubReferees = usersService.subscribeByRole('referee', setReferees);
+    return () => {
+      unsubMatches();
+      unsubTeams();
+      unsubReferees();
     };
-    loadData();
-  }, [userData]);
+  }, []);
+
+  const upcoming = matches.filter(m => m.status === 'scheduled').length;
+  const completed = matches.filter(m => m.status === 'completed').length;
+  const pendingReferee = userData?.role === 'referee'
+    ? matches.filter(m =>
+        m.status === 'scheduled' &&
+        m.referees?.some(r => r.refereeId === userData.id && r.status === 'pending')
+      ).length
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -46,48 +46,48 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="flex items-center gap-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => window.location.href = '/matches'}>
-          <div className="p-3 bg-blue-100 rounded-lg">
-            <Calendar className="w-6 h-6 text-blue-600" />
+        <Card className="flex items-center gap-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/matches')}>
+          <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
+            <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-300" />
           </div>
           <div className="flex-1">
-            <p className="text-2xl font-bold">{stats.upcoming}</p>
-            <p className="text-gray-500 text-sm">Upcoming Matches</p>
+            <p className="text-2xl font-bold">{upcoming}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Upcoming Matches</p>
           </div>
           <ChevronRight className="w-5 h-5 text-gray-400" />
         </Card>
 
         <Card className="flex items-center gap-4">
-          <div className="p-3 bg-green-100 rounded-lg">
-            <Trophy className="w-6 h-6 text-green-600" />
+          <div className="p-3 bg-green-100 dark:bg-green-900/50 rounded-lg">
+            <Trophy className="w-6 h-6 text-green-600 dark:text-green-300" />
           </div>
           <div>
-            <p className="text-2xl font-bold">{stats.completed}</p>
-            <p className="text-gray-500 text-sm">Completed</p>
+            <p className="text-2xl font-bold">{completed}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Completed</p>
           </div>
         </Card>
 
-        <Card 
-          className="flex items-center gap-4 cursor-pointer hover:shadow-lg transition-shadow" 
+        <Card
+          className="flex items-center gap-4 cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => setShowReferees(!showReferees)}
         >
-          <div className="p-3 bg-purple-100 rounded-lg">
-            <Users className="w-6 h-6 text-purple-600" />
+          <div className="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+            <Users className="w-6 h-6 text-purple-600 dark:text-purple-300" />
           </div>
           <div className="flex-1">
             <p className="text-2xl font-bold">{referees.length}</p>
-            <p className="text-gray-500 text-sm">Referees</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Referees</p>
           </div>
           <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${showReferees ? 'rotate-90' : ''}`} />
         </Card>
 
-        <Card className="flex items-center gap-4" onClick={() => window.location.href = '/teams'} style={{cursor: 'pointer'}}>
-          <div className="p-3 bg-orange-100 rounded-lg">
-            <ClipboardList className="w-6 h-6 text-orange-600" />
+        <Card className="flex items-center gap-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/teams')}>
+          <div className="p-3 bg-orange-100 dark:bg-orange-900/50 rounded-lg">
+            <ClipboardList className="w-6 h-6 text-orange-600 dark:text-orange-300" />
           </div>
           <div className="flex-1">
             <p className="text-2xl font-bold">{teams.length}</p>
-            <p className="text-gray-500 text-sm">Teams</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Teams</p>
           </div>
           <ChevronRight className="w-5 h-5 text-gray-400" />
         </Card>
@@ -102,8 +102,8 @@ export const DashboardPage: React.FC = () => {
           {referees.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {referees.map(referee => (
-                <div key={referee.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center overflow-hidden">
+                <div key={referee.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center overflow-hidden">
                     {referee.photo ? (
                       <img src={referee.photo} alt="" className="w-full h-full object-cover" />
                     ) : (
@@ -111,24 +111,24 @@ export const DashboardPage: React.FC = () => {
                     )}
                   </div>
                   <div>
-                    <p className="font-medium">{referee.name}</p>
-                    <p className="text-sm text-gray-500">{referee.nickname || 'No nickname'}</p>
+                    <p className="font-medium dark:text-gray-100">{referee.name}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{referee.nickname || 'No nickname'}</p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-4">No referees available</p>
+            <p className="text-gray-500 dark:text-gray-400 text-center py-4">No referees available</p>
           )}
         </Card>
       )}
 
-      {userData?.role === 'referee' && stats.pendingReferee > 0 && (
-        <Card className="bg-yellow-50 border border-yellow-200">
-          <h3 className="font-semibold text-yellow-800 mb-2">
-            Pending Assignments ({stats.pendingReferee})
+      {userData?.role === 'referee' && pendingReferee > 0 && (
+        <Card className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700">
+          <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+            Pending Assignments ({pendingReferee})
           </h3>
-          <p className="text-yellow-700 text-sm">
+          <p className="text-yellow-700 dark:text-yellow-300 text-sm">
             You have matches waiting for your confirmation.
           </p>
         </Card>
@@ -138,10 +138,10 @@ export const DashboardPage: React.FC = () => {
         <h2 className="text-lg font-semibold mb-4">Recent Matches</h2>
         <div className="space-y-3">
           {matches.slice(0, 5).map(match => (
-            <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+            <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
               <div>
-                <p className="font-medium">{match.homeTeamName} vs {match.awayTeamName}</p>
-                <p className="text-sm text-gray-500">
+                <p className="font-medium dark:text-gray-100">{match.homeTeamName} vs {match.awayTeamName}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {new Date(match.dateTime).toLocaleDateString()} - {match.location}
                 </p>
               </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { usersService } from '../firebase';
+import { usersService } from '../supabase';
 import { Button, Input, Card } from '../components/ui';
 
 interface ValidationError {
@@ -86,9 +86,9 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-800 to-green-600 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-green-800 to-green-600 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6">
+        <h1 className="text-2xl font-bold text-center mb-6 dark:text-gray-100">
           {isRegister ? 'Create Account' : 'Referee Match Manager'}
         </h1>
 
@@ -110,11 +110,11 @@ export const LoginPage: React.FC = () => {
                 placeholder="Optional display name"
               />
               <div className="flex flex-col gap-1">
-                <label className="font-medium">Role</label>
+                <label className="font-medium dark:text-gray-200">Role</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as any)}
-                  className="border rounded-lg px-3 py-2 border-gray-300"
+                  className="border rounded-lg px-3 py-2 border-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
                 >
                   <option value="admin">Admin</option>
                   <option value="referee">Referee</option>
@@ -142,13 +142,13 @@ export const LoginPage: React.FC = () => {
           />
 
           {errors.some(e => e.type === 'login') && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+            <div className="bg-red-50 dark:bg-red-900/50 text-red-600 dark:text-red-300 p-3 rounded-lg text-sm">
               {errors.find(e => e.type === 'login')?.message}
             </div>
           )}
 
           {isRegister && (
-            <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+            <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
               <p className="font-medium mb-1">Password requirements:</p>
               <ul className="space-y-1">
                 <li className={password.length >= 8 ? 'text-green-600' : 'text-red-500'}>
@@ -172,7 +172,7 @@ export const LoginPage: React.FC = () => {
           </Button>
         </form>
 
-        <p className="text-center mt-4 text-gray-600">
+        <p className="text-center mt-4 text-gray-600 dark:text-gray-400">
           {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
             onClick={() => {

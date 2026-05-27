@@ -49,7 +49,7 @@ export interface Team {
   id: string;
   name: string;
   logo?: string;
-  coachId: string;
+  coachId?: string;
   category: string;
   divisions: LeagueType[];
   createdAt: Date;

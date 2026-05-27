@@ -5,3 +5,11 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
+
+.dark body {
+  background-color: #1a1a2e;
+}
+
+.dark {
+  color-scheme: dark;
+}

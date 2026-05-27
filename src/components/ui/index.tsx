@@ -15,10 +15,10 @@ export const Button: React.FC<ButtonProps> = ({
   const baseStyles = 'rounded-lg font-medium transition-colors disabled:opacity-50';
   
   const variants = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700',
-    secondary: 'bg-gray-600 text-white hover:bg-gray-700',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
-    outline: 'border-2 border-gray-300 hover:bg-gray-100'
+    primary: 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600',
+    secondary: 'bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600',
+    danger: 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600',
+    outline: 'border-2 border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
   };
 
   const sizes = {
@@ -50,9 +50,9 @@ export const Input: React.FC<InputProps> = ({
 }) => {
   return (
     <div className="flex flex-col gap-1">
-      {label && <label className="font-medium">{label}</label>}
+      {label && <label className="font-medium dark:text-gray-200">{label}</label>}
       <input 
-        className={`border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : 'border-gray-300'} ${className}`}
+        className={`border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 ${error ? 'border-red-500' : 'border-gray-300'} ${className}`}
         {...props}
       />
       {error && <span className="text-red-500 text-sm">{error}</span>}
@@ -73,9 +73,9 @@ export const Select: React.FC<SelectProps> = ({
 }) => {
   return (
     <div className="flex flex-col gap-1">
-      {label && <label className="font-medium">{label}</label>}
+      {label && <label className="font-medium dark:text-gray-200">{label}</label>}
       <select 
-        className={`border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300 ${className}`}
+        className={`border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 border-gray-300 ${className}`}
         {...props}
       >
         {options.map(opt => (
@@ -96,7 +96,7 @@ interface CardProps {
 export const Card: React.FC<CardProps> = ({ children, className = '', onClick, style }) => {
   return (
     <div 
-      className={`bg-white rounded-xl shadow-md p-6 ${onClick ? 'cursor-pointer hover:shadow-lg transition-shadow' : ''} ${className}`}
+      className={`bg-white dark:bg-gray-800 dark:text-gray-100 rounded-xl shadow-md p-6 ${onClick ? 'cursor-pointer hover:shadow-lg transition-shadow' : ''} ${className}`}
       onClick={onClick}
       style={style}
     >
@@ -114,10 +114,10 @@ interface BadgeProps {
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant = 'info', className = '', onClick }) => {
   const variants = {
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    danger: 'bg-red-100 text-red-800',
-    info: 'bg-blue-100 text-blue-800'
+    success: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+    warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+    danger: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+    info: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
   };
 
   return (
@@ -142,10 +142,10 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+      <div className="bg-white dark:bg-gray-800 dark:text-gray-100 rounded-xl p-6 w-full max-w-md mx-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">{title}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
         </div>
         {children}
       </div>
@@ -166,9 +166,9 @@ export const Table: React.FC<TableProps> = ({ children }) => {
 };
 
 export const Th: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600 border-b">{children}</th>
+  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600 dark:text-gray-400 border-b dark:border-gray-700">{children}</th>
 );
 
 export const Td: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <td className={`px-4 py-3 border-b ${className}`}>{children}</td>
+  <td className={`px-4 py-3 border-b dark:border-gray-700 ${className}`}>{children}</td>
 );

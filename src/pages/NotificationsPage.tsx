@@ -1,25 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge } from '../components/ui';
-import { notificationsService } from '../firebase';
+import { notificationsService } from '../supabase';
 import { Notification } from '../types';
 import { Bell, Check } from 'lucide-react';
 
 export const NotificationsPage: React.FC = () => {
   const { userData } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unsub, setUnsub] = useState<(() => void) | null>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (userData) {
-      const unsubscribe = notificationsService.subscribe(userData.id, setNotifications);
-      setUnsub(() => unsubscribe);
+      unsubRef.current = notificationsService.subscribe(userData.id, setNotifications);
     }
-    return () => unsub?.();
+    return () => {
+      unsubRef.current?.();
+      unsubRef.current = null;
+    };
   }, [userData]);
 
   const markAsRead = async (id: string) => {
-    await notificationsService.markAsRead(id);
+    try {
+      await notificationsService.markAsRead(id);
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;

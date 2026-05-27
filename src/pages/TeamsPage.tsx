@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, Modal, Badge } from '../components/ui';
-import { teamsService, usersService } from '../firebase';
+import { teamsService, usersService } from '../supabase';
 import { Team, User, LeagueType, LEAGUES } from '../types';
 import { Plus, Edit2, Trash2, Search, ChevronDown, ChevronUp, Users } from 'lucide-react';
 
@@ -24,11 +24,12 @@ export const TeamsPage: React.FC = () => {
   });
 
   useEffect(() => {
-    const loadData = async () => {
-      teamsService.subscribe(setTeams);
-      setCoaches(await usersService.getByRole('coach'));
+    const unsubTeams = teamsService.subscribe(setTeams);
+    const unsubCoaches = usersService.subscribeByRole('coach', setCoaches);
+    return () => {
+      unsubTeams();
+      unsubCoaches();
     };
-    loadData();
   }, []);
 
   const canManage = userData?.role === 'admin' || userData?.role === 'coach';
@@ -40,23 +41,30 @@ export const TeamsPage: React.FC = () => {
       category: formData.category,
       logo: formData.logo,
       divisions: formData.divisions,
-      coachId: userData?.role === 'coach' ? userData.id : '',
+      coachId: userData?.role === 'coach' ? userData.id : undefined,
       createdAt: new Date()
     };
 
-    if (editingTeam) {
-      await teamsService.update(editingTeam.id, teamData);
-    } else {
-      await teamsService.create(teamData);
+    try {
+      if (editingTeam) {
+        await teamsService.update(editingTeam.id, teamData);
+      } else {
+        await teamsService.create(teamData);
+      }
+      setIsModalOpen(false);
+      setEditingTeam(null);
+      setFormData({ name: '', category: '', logo: '', divisions: [] });
+    } catch (err) {
+      alert('Failed to save team: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
-    setIsModalOpen(false);
-    setEditingTeam(null);
-    setFormData({ name: '', category: '', logo: '', divisions: [] });
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Delete this team?')) {
+    if (!confirm('Delete this team?')) return;
+    try {
       await teamsService.delete(id);
+    } catch (err) {
+      alert('Failed to delete team: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   };
 
@@ -120,18 +128,18 @@ export const TeamsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl font-bold">Teams</h1>
+        <h1 className="text-2xl font-bold dark:text-gray-100">Teams</h1>
         <div className="flex gap-2">
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => setViewMode('all')}
-              className={`px-3 py-1 rounded-md text-sm ${viewMode === 'all' ? 'bg-white shadow' : ''}`}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${viewMode === 'all' ? 'bg-white dark:bg-gray-600 shadow dark:text-gray-100' : 'dark:text-gray-300'}`}
             >
               All Teams
             </button>
             <button
               onClick={() => setViewMode('grouped')}
-              className={`px-3 py-1 rounded-md text-sm ${viewMode === 'grouped' ? 'bg-white shadow' : ''}`}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${viewMode === 'grouped' ? 'bg-white dark:bg-gray-600 shadow dark:text-gray-100' : 'dark:text-gray-300'}`}
             >
               Group by Club
             </button>
@@ -147,13 +155,13 @@ export const TeamsPage: React.FC = () => {
 
       <Card>
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="Search teams or leagues..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
           />
         </div>
 
@@ -162,13 +170,13 @@ export const TeamsPage: React.FC = () => {
             {filteredTeams.map(team => {
               const coach = coaches.find(c => c.id === team.coachId);
               return (
-                <div key={team.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                <div key={team.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                   <div className="flex items-center gap-3">
                     {team.logo && (
                       <img src={team.logo} alt="" className="w-10 h-10 rounded-full object-cover" />
                     )}
                     <div>
-                      <p className="font-medium">{team.name}</p>
+                      <p className="font-medium dark:text-gray-100">{team.name}</p>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {team.divisions.map((div, idx) => (
                           <Badge key={idx} variant="info" className="text-xs">
@@ -179,13 +187,13 @@ export const TeamsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-500">{coach?.name || '-'}</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">{coach?.name || '-'}</span>
                     {canManage && (
                       <div className="flex gap-2">
-                        <button onClick={() => openEdit(team)} className="p-1 hover:bg-gray-200 rounded">
+                        <button onClick={() => openEdit(team)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                           <Edit2 className="w-4 h-4 text-blue-600" />
                         </button>
-                        <button onClick={() => handleDelete(team.id)} className="p-1 hover:bg-gray-200 rounded">
+                        <button onClick={() => handleDelete(team.id)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                           <Trash2 className="w-4 h-4 text-red-600" />
                         </button>
                       </div>
@@ -195,15 +203,15 @@ export const TeamsPage: React.FC = () => {
               );
             })}
             {filteredTeams.length === 0 && (
-              <p className="text-center py-8 text-gray-500">No teams found</p>
+              <p className="text-center py-8 text-gray-500 dark:text-gray-400">No teams found</p>
             )}
           </div>
         ) : (
           <div className="space-y-4">
             {Object.entries(filteredGroupedTeams).map(([clubName, clubTeams]) => (
-              <div key={clubName} className="border rounded-lg overflow-hidden">
+              <div key={clubName} className="border rounded-lg overflow-hidden dark:border-gray-600">
                 <div 
-                  className="flex justify-between items-center p-4 bg-gray-100 cursor-pointer hover:bg-gray-200"
+                  className="flex justify-between items-center p-4 bg-gray-100 dark:bg-gray-700 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
                   onClick={() => toggleExpand(clubName)}
                 >
                   <div className="flex items-center gap-3">
@@ -211,15 +219,15 @@ export const TeamsPage: React.FC = () => {
                       <img src={clubTeams[0].logo} alt="" className="w-10 h-10 rounded-full object-cover" />
                     )}
                     <div className="flex items-center gap-2">
-                      <Users className="w-5 h-5 text-gray-600" />
-                      <span className="font-bold text-lg">{clubName}</span>
+                      <Users className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                      <span className="font-bold text-lg dark:text-gray-100">{clubName}</span>
                       <Badge variant="info">{clubTeams.length} team{clubTeams.length > 1 ? 's' : ''}</Badge>
                     </div>
                   </div>
                   {expandedTeams.has(clubName) ? (
-                    <ChevronUp className="w-5 h-5" />
+                    <ChevronUp className="w-5 h-5 dark:text-gray-300" />
                   ) : (
-                    <ChevronDown className="w-5 h-5" />
+                    <ChevronDown className="w-5 h-5 dark:text-gray-300" />
                   )}
                 </div>
                 {expandedTeams.has(clubName) && (
@@ -227,9 +235,9 @@ export const TeamsPage: React.FC = () => {
                     {clubTeams.map(team => {
                       const coach = coaches.find(c => c.id === team.coachId);
                       return (
-                        <div key={team.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div key={team.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{team.name}</span>
+                            <span className="font-medium dark:text-gray-100">{team.name}</span>
                             <div className="flex flex-wrap gap-1">
                               {team.divisions.map((div, idx) => (
                                 <Badge key={idx} variant="info" className="text-xs">
@@ -239,13 +247,13 @@ export const TeamsPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
-                            <span className="text-sm text-gray-500">{coach?.name || '-'}</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">{coach?.name || '-'}</span>
                             {canManage && (
                               <div className="flex gap-2">
-                                <button onClick={() => openEdit(team)} className="p-1 hover:bg-gray-200 rounded">
+                                <button onClick={() => openEdit(team)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                                   <Edit2 className="w-4 h-4 text-blue-600" />
                                 </button>
-                                <button onClick={() => handleDelete(team.id)} className="p-1 hover:bg-gray-200 rounded">
+                                <button onClick={() => handleDelete(team.id)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                                   <Trash2 className="w-4 h-4 text-red-600" />
                                 </button>
                               </div>
@@ -259,7 +267,7 @@ export const TeamsPage: React.FC = () => {
               </div>
             ))}
             {Object.keys(filteredGroupedTeams).length === 0 && (
-              <p className="text-center py-8 text-gray-500">No teams found</p>
+              <p className="text-center py-8 text-gray-500 dark:text-gray-400">No teams found</p>
             )}
           </div>
         )}
@@ -288,18 +296,18 @@ export const TeamsPage: React.FC = () => {
           />
           
           <div className="relative">
-            <label className="font-medium block mb-1">Leagues/Divisions</label>
-            <div className="border rounded-lg overflow-hidden">
+            <label className="font-medium block mb-1 dark:text-gray-100">Leagues/Divisions</label>
+            <div className="border rounded-lg overflow-hidden dark:border-gray-600">
               <div 
-                className="p-2 bg-gray-50 cursor-pointer flex justify-between items-center"
+                className="p-2 bg-gray-50 dark:bg-gray-700 cursor-pointer flex justify-between items-center"
                 onClick={() => setShowLeagueDropdown(!showLeagueDropdown)}
               >
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600 dark:text-gray-300">
                   {formData.divisions.length > 0 
                     ? `${formData.divisions.length} selected` 
                     : 'Select leagues...'}
                 </span>
-                {showLeagueDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {showLeagueDropdown ? <ChevronUp className="w-4 h-4 dark:text-gray-300" /> : <ChevronDown className="w-4 h-4 dark:text-gray-300" />}
               </div>
               {showLeagueDropdown && (
                 <div className="p-2 border-t">
@@ -308,13 +316,13 @@ export const TeamsPage: React.FC = () => {
                     placeholder="Search leagues..."
                     value={leagueSearch}
                     onChange={(e) => setLeagueSearch(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg mb-2 text-sm"
+                    className="w-full px-3 py-2 border rounded-lg mb-2 text-sm dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                   />
                   <div className="max-h-48 overflow-y-auto space-y-1">
                     {filteredLeagues.map(league => (
                       <label 
                         key={league.value} 
-                        className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                        className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-600 rounded cursor-pointer"
                       >
                         <input
                           type="checkbox"
@@ -322,7 +330,7 @@ export const TeamsPage: React.FC = () => {
                           onChange={() => toggleDivision(league.value)}
                           className="rounded"
                         />
-                        <span className="text-sm">{league.label}</span>
+                        <span className="text-sm dark:text-gray-200">{league.label}</span>
                       </label>
                     ))}
                   </div>
@@ -341,7 +349,7 @@ export const TeamsPage: React.FC = () => {
           </div>
 
           <div className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); setEditingTeam(null); }} className="flex-1">
+            <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); setEditingTeam(null); setFormData({ name: '', category: '', logo: '', divisions: [] }); }} className="flex-1">
               Cancel
             </Button>
             <Button type="submit" className="flex-1">
