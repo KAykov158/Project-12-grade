@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Badge } from '../components/ui';
-import { notificationsService } from '../supabase';
+import { Card, Badge, Button } from '../components/ui';
+import { notificationsService, matchesService } from '../supabase';
 import { Notification } from '../types';
-import { Bell, Check } from 'lucide-react';
+import { Bell, Check, X } from 'lucide-react';
 
 export const NotificationsPage: React.FC = () => {
   const { userData } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unsubRef = useRef<(() => void) | null>(null);
 
@@ -20,11 +22,26 @@ export const NotificationsPage: React.FC = () => {
     };
   }, [userData]);
 
+  const [responding, setResponding] = useState<string | null>(null);
+
   const markAsRead = async (id: string) => {
     try {
       await notificationsService.markAsRead(id);
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
+    }
+  };
+
+  const respondFromNotification = async (notification: Notification, status: 'accepted' | 'declined') => {
+    if (!notification.matchId || !userData) return;
+    setResponding(notification.id);
+    try {
+      await matchesService.updateRefereeStatus(notification.matchId, userData.id, status);
+      await markAsRead(notification.id);
+    } catch (err) {
+      alert('Failed to respond: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
+    } finally {
+      setResponding(null);
     }
   };
 
@@ -43,7 +60,12 @@ export const NotificationsPage: React.FC = () => {
         {notifications.map(notification => (
           <Card 
             key={notification.id} 
-            className={`flex items-start gap-3 ${!notification.read ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}
+            className={`flex items-start gap-3 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-750 ${!notification.read ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}
+            onClick={() => {
+              if (!notification.read) markAsRead(notification.id);
+              if (notification.matchId) navigate(`/matches?highlight=${notification.matchId}`);
+              else navigate('/matches');
+            }}
           >
             <div className="p-2 bg-blue-100 rounded-full">
               <Bell className="w-5 h-5 text-blue-600" />
@@ -56,14 +78,34 @@ export const NotificationsPage: React.FC = () => {
                 </span>
               </div>
               <p className="text-gray-600 mt-1">{notification.message}</p>
-              {!notification.read && (
-                <button 
-                  onClick={() => markAsRead(notification.id)}
-                  className="text-sm text-blue-600 hover:underline mt-2 flex items-center gap-1"
-                >
-                  <Check className="w-4 h-4" /> Mark as read
-                </button>
-              )}
+              <div className="flex items-center gap-2 mt-2">
+                {userData?.role === 'referee' && notification.matchId && (
+                  <>
+                    <button
+                      disabled={responding === notification.id}
+                      onClick={(e) => { e.stopPropagation(); respondFromNotification(notification, 'accepted'); }}
+                      className="text-sm text-green-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Check className="w-4 h-4" /> Accept
+                    </button>
+                    <button
+                      disabled={responding === notification.id}
+                      onClick={(e) => { e.stopPropagation(); respondFromNotification(notification, 'declined'); }}
+                      className="text-sm text-red-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" /> Decline
+                    </button>
+                  </>
+                )}
+                {!notification.read && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); markAsRead(notification.id); }}
+                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <Check className="w-4 h-4" /> Mark as read
+                  </button>
+                )}
+              </div>
             </div>
           </Card>
         ))}

@@ -324,8 +324,8 @@ function mapMatchToDb(data: Partial<Match> | Omit<Match, 'id'>): any {
   if (data.category !== undefined) db.category = data.category;
   if (data.comments !== undefined) db.comments = data.comments;
   if (data.status !== undefined) db.status = data.status;
-  if (data.referees !== undefined) db.referees = JSON.stringify(data.referees);
-  if (data.result !== undefined) db.result = data.result ? JSON.stringify(data.result) : null;
+  if (data.referees !== undefined) db.referees = data.referees;
+  if (data.result !== undefined) db.result = data.result || null;
   if ('dateTime' in data && data.dateTime !== undefined) db.date_time = data.dateTime instanceof Date ? data.dateTime.toISOString() : data.dateTime;
   if ('createdAt' in data && data.createdAt !== undefined) db.created_at = data.createdAt.toISOString();
   return db;
@@ -352,13 +352,15 @@ function mapDbToMatch(data: any): Match {
 }
 
 function mapNotificationToDb(data: Omit<Notification, 'id'>): any {
-  return {
+  const db: any = {
     user_id: data.userId,
     title: data.title,
     message: data.message,
     read: data.read,
     created_at: data.createdAt instanceof Date ? data.createdAt.toISOString() : data.createdAt
   };
+  if (data.matchId !== undefined) db.match_id = data.matchId;
+  return db;
 }
 
 function mapDbToNotification(data: any): Notification {
@@ -367,6 +369,7 @@ function mapDbToNotification(data: any): Notification {
     userId: data.user_id,
     title: data.title,
     message: data.message,
+    matchId: data.match_id || undefined,
     read: data.read,
     createdAt: new Date(data.created_at)
   };

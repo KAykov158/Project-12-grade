@@ -83,6 +83,7 @@ ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 CREATE TABLE notifications (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   message TEXT NOT NULL,
   read BOOLEAN DEFAULT FALSE,
@@ -138,6 +139,15 @@ CREATE POLICY "matches_insert" ON matches FOR INSERT WITH CHECK (
 );
 CREATE POLICY "matches_update" ON matches FOR UPDATE USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY "matches_update_referees" ON matches FOR UPDATE USING (
+  EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(referees) = 'array' THEN referees ELSE '[]'::jsonb END
+    ) AS referee
+    WHERE (referee->>'refereeId')::uuid = auth.uid()
+  )
 );
 CREATE POLICY "matches_delete" ON matches FOR DELETE USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')

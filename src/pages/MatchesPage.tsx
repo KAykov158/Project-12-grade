@@ -1,18 +1,31 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, Modal, Select, Badge } from '../components/ui';
 import { matchesService, teamsService, usersService, notificationsService } from '../supabase';
-import { Match, Team, User, RefereeAssignment, LeagueType } from '../types';
+import { Match, Team, User, RefereeAssignment, LeagueType, GoalEvent, CardEvent } from '../types';
 import { Plus, Check, X, MapPin, Calendar as CalendarIcon, UserCircle, Trash2, Edit2 } from 'lucide-react';
 
 export const MatchesPage: React.FC = () => {
   const { userData } = useAuth();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlight');
   const [matches, setMatches] = useState<Match[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [referees, setReferees] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'completed'>('all');
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [reportMatch, setReportMatch] = useState<Match | null>(null);
+  const [reportForm, setReportForm] = useState({
+    homeScore: 0,
+    awayScore: 0,
+    goals: [] as GoalEvent[],
+    yellowCards: [] as CardEvent[],
+    redCards: [] as CardEvent[],
+    description: '',
+  });
   const [formData, setFormData] = useState({
     homeTeamId: '',
     awayTeamId: '',
@@ -34,8 +47,19 @@ export const MatchesPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (highlightId) {
+      setFilter('all');
+      setTimeout(() => {
+        document.getElementById(`match-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [matches, highlightId]);
+
   const canManage = userData?.role === 'admin';
-  const filteredMatches = matches.filter(m => filter === 'all' || m.status === filter);
+  const filteredMatches = matches
+    .filter(m => filter === 'all' || m.status === filter)
+    .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
 
   const selectedHomeTeam = teams.find(t => t.id === formData.homeTeamId);
   const selectedAwayTeam = teams.find(t => t.id === formData.awayTeamId);
@@ -93,6 +117,7 @@ export const MatchesPage: React.FC = () => {
     try {
       await notificationsService.create({
         userId: refereeId,
+        matchId,
         title: 'New Match Assignment',
         message: `You have been assigned as ${role} for ${match.homeTeamName} vs ${match.awayTeamName}`,
         read: false,
@@ -113,7 +138,7 @@ export const MatchesPage: React.FC = () => {
     try {
       await matchesService.update(matchId, { referees: updatedReferees });
     } catch (err) {
-      alert('Failed to remove referee: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      alert('Failed to remove referee: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
     }
   };
 
@@ -141,6 +166,105 @@ export const MatchesPage: React.FC = () => {
 
   const availableReferees = (match: Match) => {
     return referees.filter(r => !match.referees?.some(mr => mr.refereeId === r.id));
+  };
+
+  const openReport = (match: Match) => {
+    const goals = match.result?.goals ?? [];
+    setReportForm({
+      homeScore: goals.filter(g => g.team === 'home').length,
+      awayScore: goals.filter(g => g.team === 'away').length,
+      goals,
+      yellowCards: match.result?.yellowCards ?? [],
+      redCards: match.result?.redCards ?? [],
+      description: match.result?.description ?? '',
+    });
+    setReportMatch(match);
+  };
+
+  const addGoal = () => {
+    setReportForm(f => {
+      const homeCount = f.goals.filter(g => g.team === 'home').length;
+      const awayCount = f.goals.filter(g => g.team === 'away').length;
+      const team = homeCount <= awayCount ? 'home' : 'away';
+      const newGoals = [...f.goals, { team, minute: 0, scorer: 0 }];
+      return {
+        ...f,
+        goals: newGoals,
+        homeScore: team === 'home' ? homeCount + 1 : homeCount,
+        awayScore: team === 'away' ? awayCount + 1 : awayCount,
+      };
+    });
+  };
+
+  const updateGoal = (i: number, field: keyof GoalEvent, value: string | number) => {
+    setReportForm(f => {
+      const goals = [...f.goals];
+      (goals[i] as any)[field] = value;
+      return {
+        ...f,
+        goals,
+        homeScore: goals.filter(g => g.team === 'home').length,
+        awayScore: goals.filter(g => g.team === 'away').length,
+      };
+    });
+  };
+
+  const removeGoal = (i: number) => {
+    setReportForm(f => {
+      const goals = f.goals.filter((_, idx) => idx !== i);
+      return {
+        ...f,
+        goals,
+        homeScore: goals.filter(g => g.team === 'home').length,
+        awayScore: goals.filter(g => g.team === 'away').length,
+      };
+    });
+  };
+
+  const addCard = (type: 'yellow' | 'red') => {
+    const key = type === 'yellow' ? 'yellowCards' : 'redCards';
+    setReportForm(f => ({ ...f, [key]: [...f[key], { team: 'home', minute: 0, player: '' }] }));
+  };
+
+  const updateCard = (type: 'yellow' | 'red', i: number, field: keyof CardEvent, value: string | number) => {
+    const key = type === 'yellow' ? 'yellowCards' : 'redCards';
+    setReportForm(f => {
+      const cards = [...f[key]];
+      (cards[i] as any)[field] = value;
+      return { ...f, [key]: cards };
+    });
+  };
+
+  const removeCard = (type: 'yellow' | 'red', i: number) => {
+    const key = type === 'yellow' ? 'yellowCards' : 'redCards';
+    setReportForm(f => ({ ...f, [key]: f[key].filter((_, idx) => idx !== i) }));
+  };
+
+  const submitReport = async () => {
+    if (!reportMatch) return;
+    try {
+      await matchesService.update(reportMatch.id, {
+        result: {
+          homeScore: reportForm.homeScore,
+          awayScore: reportForm.awayScore,
+          goals: reportForm.goals,
+          yellowCards: reportForm.yellowCards,
+          redCards: reportForm.redCards,
+          description: reportForm.description || undefined,
+        },
+      });
+      setReportMatch(null);
+    } catch (err) {
+      alert('Failed to save report: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
+    }
+  };
+
+  const markCompleted = async (match: Match) => {
+    try {
+      await matchesService.update(match.id, { status: 'completed' });
+    } catch (err) {
+      alert('Failed to mark match as completed: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
+    }
   };
 
   return (
@@ -174,7 +298,8 @@ export const MatchesPage: React.FC = () => {
           const canRespond = userData?.role === 'referee' && myAssignment?.status === 'pending';
 
           return (
-            <Card key={match.id} className="space-y-3">
+            <div key={match.id} id={`match-${match.id}`}>
+            <Card className={`space-y-3 ${match.id === highlightId ? 'ring-2 ring-blue-500' : ''}`}>
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-lg font-bold">
@@ -196,18 +321,115 @@ export const MatchesPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <Badge variant={match.status === 'scheduled' ? 'info' : 'success'}>
+                  <Badge variant={match.status === 'scheduled' ? 'info' : match.status === 'completed' ? 'success' : 'danger'}>
                     {match.status}
                   </Badge>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{match.category}</p>
+                  {(canManage || (userData?.role === 'referee' && match.referees?.some(r => r.refereeId === userData.id))) && match.status === 'scheduled' && (
+                    <button
+                      onClick={() => markCompleted(match)}
+                      className="text-xs text-blue-600 hover:underline mt-2 block"
+                    >
+                      Mark as Completed
+                    </button>
+                  )}
+                  {(canManage || (userData?.role === 'referee' && match.referees?.some(r => r.refereeId === userData.id))) && match.status === 'completed' && (
+                    <button
+                      onClick={() => openReport(match)}
+                      className="text-xs text-blue-600 hover:underline mt-2 block"
+                    >
+                      {match.result ? 'Edit Report' : 'Submit Report'}
+                    </button>
+                  )}
                 </div>
               </div>
 
               {match.result && (
-                <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg text-center">
-                  <span className="text-2xl font-bold dark:text-gray-100">
-                    {match.result.homeScore} - {match.result.awayScore}
-                  </span>
+                <div>
+                  <div
+                    className={`bg-gray-100 dark:bg-gray-700 p-3 rounded-lg ${match.result.goals.length > 0 || match.result.yellowCards.length > 0 || match.result.redCards.length > 0 || match.result.description ? 'cursor-pointer' : ''}`}
+                    onClick={() => {
+                      if (match.result && (match.result.goals.length > 0 || match.result.yellowCards.length > 0 || match.result.redCards.length > 0 || match.result.description)) {
+                        setExpandedReport(expandedReport === match.id ? null : match.id);
+                      }
+                    }}
+                  >
+                    <div className="text-center">
+                      <span className="text-2xl font-bold dark:text-gray-100">
+                        {match.result.homeScore} - {match.result.awayScore}
+                      </span>
+                      {(match.result.goals.length > 0 || match.result.yellowCards.length > 0 || match.result.redCards.length > 0 || match.result.description) && (
+                        <span className="text-xs text-gray-400 ml-2">
+                          {expandedReport === match.id ? '▲' : '▼'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {expandedReport === match.id && (
+                    <div className="bg-gray-50 dark:bg-gray-750 p-3 rounded-lg mt-1 space-y-2">
+
+                  {match.result.goals.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Goals</p>
+                      <div className="space-y-0.5">
+                        {match.result.goals.map((g, i) => (
+                          <p key={i} className="text-sm dark:text-gray-200">
+                            <span className={g.team === 'home' ? 'text-blue-600' : 'text-red-600'}>
+                              {g.team === 'home' ? match.homeTeamName : match.awayTeamName}
+                            </span>{' '}
+                            {g.scorer} ({g.minute}&apos;)
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {match.result.yellowCards.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
+                        Yellow Cards <span className="text-yellow-500">&#9632;</span>
+                      </p>
+                      <div className="space-y-0.5">
+                        {match.result.yellowCards.map((c, i) => (
+                          <p key={i} className="text-sm dark:text-gray-200">
+                            <span className={c.team === 'home' ? 'text-blue-600' : 'text-red-600'}>
+                              {c.team === 'home' ? match.homeTeamName : match.awayTeamName}
+                            </span>{' '}
+                            {c.player} ({c.minute}&apos;)
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {match.result.redCards.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
+                        Red Cards <span className="text-red-500">&#9632;</span>
+                      </p>
+                      <div className="space-y-0.5">
+                        {match.result.redCards.map((c, i) => (
+                          <p key={i} className="text-sm dark:text-gray-200">
+                            <span className={c.team === 'home' ? 'text-blue-600' : 'text-red-600'}>
+                              {c.team === 'home' ? match.homeTeamName : match.awayTeamName}
+                            </span>{' '}
+                            {c.player} ({c.minute}&apos;)
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {match.result.description && (
+                    <div className="pt-2 border-t dark:border-gray-600">
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Notes</p>
+                      <p className="text-sm dark:text-gray-200 whitespace-pre-wrap">{match.result.description}</p>
+                    </div>
+                  )}
+
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -320,6 +542,7 @@ export const MatchesPage: React.FC = () => {
                 </div>
               )}
             </Card>
+            </div>
           );
         })}
         {filteredMatches.length === 0 && (
@@ -406,6 +629,153 @@ export const MatchesPage: React.FC = () => {
             <Button type="submit" className="flex-1">Create</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={!!reportMatch} onClose={() => setReportMatch(null)} title="Match Report">
+        <div className="space-y-4">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="font-medium text-sm dark:text-gray-200">{reportMatch?.homeTeamName} Score</label>
+              <input
+                type="number" min="0" readOnly
+                value={reportForm.homeScore}
+                className="w-full border rounded-lg px-3 py-2 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="font-medium text-sm dark:text-gray-200">{reportMatch?.awayTeamName} Score</label>
+              <input
+                type="number" min="0" readOnly
+                value={reportForm.awayScore}
+                className="w-full border rounded-lg px-3 py-2 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="font-medium text-sm dark:text-gray-200">Goals</label>
+              <button onClick={addGoal} className="text-xs text-blue-600 hover:underline">+ Add Goal</button>
+            </div>
+            <div className="space-y-2">
+              {reportForm.goals.map((g, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <select
+                    value={g.team}
+                    onChange={e => updateGoal(i, 'team', e.target.value)}
+                    className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  >
+                    <option value="home">{reportMatch?.homeTeamName}</option>
+                    <option value="away">{reportMatch?.awayTeamName}</option>
+                  </select>
+                  <input
+                    type="number" min="0" placeholder="Jersey #"
+                    value={g.scorer || ''}
+                    onChange={e => updateGoal(i, 'scorer', parseInt(e.target.value) || 0)}
+                    onFocus={e => e.target.select()}
+                    className="flex-1 border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  <input
+                    type="number" min="0" placeholder="Minute"
+                    value={g.minute || ''}
+                    onChange={e => updateGoal(i, 'minute', parseInt(e.target.value) || 0)}
+                    onFocus={e => e.target.select()}
+                    className="w-16 border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  <button onClick={() => removeGoal(i)} className="text-red-500 text-sm">&times;</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="font-medium text-sm dark:text-gray-200">Yellow Cards</label>
+              <button onClick={() => addCard('yellow')} className="text-xs text-blue-600 hover:underline">+ Add Yellow Card</button>
+            </div>
+            <div className="space-y-2">
+              {reportForm.yellowCards.map((c, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <select
+                    value={c.team}
+                    onChange={e => updateCard('yellow', i, 'team', e.target.value)}
+                    className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  >
+                    <option value="home">{reportMatch?.homeTeamName}</option>
+                    <option value="away">{reportMatch?.awayTeamName}</option>
+                  </select>
+                  <input
+                    type="text" placeholder="Player"
+                    value={c.player}
+                    onChange={e => updateCard('yellow', i, 'player', e.target.value)}
+                    className="flex-1 border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  <input
+                    type="number" min="0" placeholder="Minute"
+                    value={c.minute || ''}
+                    onChange={e => updateCard('yellow', i, 'minute', parseInt(e.target.value) || 0)}
+                    onFocus={e => e.target.select()}
+                    className="w-16 border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  <button onClick={() => removeCard('yellow', i)} className="text-red-500 text-sm">&times;</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="font-medium text-sm dark:text-gray-200">Red Cards</label>
+              <button onClick={() => addCard('red')} className="text-xs text-blue-600 hover:underline">+ Add Red Card</button>
+            </div>
+            <div className="space-y-2">
+              {reportForm.redCards.map((c, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <select
+                    value={c.team}
+                    onChange={e => updateCard('red', i, 'team', e.target.value)}
+                    className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  >
+                    <option value="home">{reportMatch?.homeTeamName}</option>
+                    <option value="away">{reportMatch?.awayTeamName}</option>
+                  </select>
+                  <input
+                    type="text" placeholder="Player"
+                    value={c.player}
+                    onChange={e => updateCard('red', i, 'player', e.target.value)}
+                    className="flex-1 border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  <input
+                    type="number" min="0" placeholder="Minute"
+                    value={c.minute || ''}
+                    onChange={e => updateCard('red', i, 'minute', parseInt(e.target.value) || 0)}
+                    onFocus={e => e.target.select()}
+                    className="w-16 border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  <button onClick={() => removeCard('red', i)} className="text-red-500 text-sm">&times;</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="font-medium text-sm dark:text-gray-200">Notes</label>
+            <textarea
+              value={reportForm.description}
+              onChange={e => setReportForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="e.g. Away team broke the referee's changing room window..."
+              rows={3}
+              className="w-full border rounded-lg px-3 py-2 text-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setReportMatch(null)} className="flex-1">
+              Cancel
+            </Button>
+            <Button onClick={submitReport} className="flex-1">Save Report</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

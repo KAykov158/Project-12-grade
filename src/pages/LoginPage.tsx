@@ -79,6 +79,8 @@ export const LoginPage: React.FC = () => {
     } catch (err: any) {
       if (err.message === 'User not found') {
         setErrors([{ type: 'login', message: 'User not found. Check your email or nickname.' }]);
+      } else if (isRegister) {
+        setErrors([{ type: 'login', message: err.message || 'Registration failed. Please try again.' }]);
       } else {
         setErrors([{ type: 'login', message: 'Invalid credentials. Please try again.' }]);
       }

@@ -104,17 +104,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
     if (!data.user) throw new Error('Registration failed');
 
-    await usersService.create({
-      id: data.user.id,
-      email,
-      name,
-      nickname: nickname || '',
-      photo: '',
-      role,
-      createdAt: new Date()
-    });
+    // Attempt client-side upsert (may fail if session not yet established, e.g. email confirmation).
+    // The server-side trigger on auth.users should also create the profile.
+    try {
+      await usersService.create({
+        id: data.user.id,
+        email,
+        name,
+        nickname: nickname || '',
+        photo: '',
+        role,
+        createdAt: new Date()
+      });
+    } catch (err) {
+      console.warn('Client-side profile insert failed (server trigger may handle it):', err);
+    }
 
-    const profile = await usersService.getById(data.user.id);
+    // Poll for the profile (from trigger or our insert) so we don't leave the user without a profile row
+    let profile: User | null = null;
+    for (let i = 0; i < 10; i++) {
+      profile = await usersService.getById(data.user.id);
+      if (profile) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+
     if (profile) {
       setupSubscription(profile);
     }

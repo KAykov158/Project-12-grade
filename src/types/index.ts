@@ -64,6 +64,27 @@ export interface RefereeAssignment {
   status: RefereeStatus;
 }
 
+export interface GoalEvent {
+  team: 'home' | 'away';
+  minute: number;
+  scorer: number;
+}
+
+export interface CardEvent {
+  team: 'home' | 'away';
+  minute: number;
+  player: string;
+}
+
+export interface MatchResult {
+  homeScore: number;
+  awayScore: number;
+  goals: GoalEvent[];
+  yellowCards: CardEvent[];
+  redCards: CardEvent[];
+  description?: string;
+}
+
 export interface Match {
   id: string;
   homeTeamId: string;
@@ -75,10 +96,7 @@ export interface Match {
   dateTime: Date;
   location: string;
   category: string;
-  result?: {
-    homeScore: number;
-    awayScore: number;
-  };
+  result?: MatchResult;
   comments?: string;
   referees: RefereeAssignment[];
   status: 'scheduled' | 'completed' | 'cancelled';
@@ -90,6 +108,7 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
+  matchId?: string;
   read: boolean;
   createdAt: Date;
 }
