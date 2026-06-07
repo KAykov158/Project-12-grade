@@ -1,26 +1,30 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { User as SupabaseUser } from '@supabase/supabase-js';
-import { supabase, usersService } from '../supabase';
+import { authenticator } from '@otplib/preset-browser';
+import { supabase, usersService, totpService } from '../supabase';
 import { User, UserRole } from '../types';
 
 interface AuthContextType {
   currentUser: SupabaseUser | null;
   userData: User | null;
   loading: boolean;
+  pendingTwoFactor: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string, role: UserRole, nickname?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  verifyTwoFactorCode: (code: string) => Promise<boolean>;
 }
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingTwoFactor, setPendingTwoFactor] = useState(false);
   const userUnsubRef = useRef<(() => void) | null>(null);
   const resolvedRef = useRef(false);
+  const pendingProfileRef = useRef<User | null>(null);
 
   const setupSubscription = useCallback((profile: User) => {
     if (userUnsubRef.current) {
@@ -29,6 +33,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUserData(profile);
     userUnsubRef.current = usersService.subscribeById(profile.id, setUserData);
+  }, []);
+
+  const finishLoading = useCallback(() => {
+    if (!resolvedRef.current) {
+      resolvedRef.current = true;
+      setLoading(false);
+    }
   }, []);
 
   const resolveUser = useCallback(async (supabaseUser: SupabaseUser | null) => {
@@ -46,7 +57,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           profile = await usersService.getByEmail(supabaseUser.email!);
         }
         if (profile) {
-          setupSubscription(profile);
+          if (profile.twoFactorEnabled && !pendingProfileRef.current) {
+            pendingProfileRef.current = profile;
+            setPendingTwoFactor(true);
+          } else {
+            pendingProfileRef.current = null;
+            setPendingTwoFactor(false);
+            setupSubscription(profile);
+          }
         } else {
           console.warn('No profile found for user:', supabaseUser.email);
           setUserData(null);
@@ -57,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else {
       setUserData(null);
+      setPendingTwoFactor(false);
     }
   }, [setupSubscription]);
 
@@ -105,8 +124,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
     if (!data.user) throw new Error('Registration failed');
 
-    // Attempt client-side upsert (may fail if session not yet established, e.g. email confirmation).
-    // The server-side trigger on auth.users should also create the profile.
     try {
       await usersService.create({
         id: data.user.id,
@@ -121,7 +138,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Client-side profile insert failed (server trigger may handle it):', err);
     }
 
-    // Poll for the profile (from trigger or our insert) so we don't leave the user without a profile row
     let profile: User | null = null;
     for (let i = 0; i < 10; i++) {
       profile = await usersService.getById(data.user.id);
@@ -140,11 +156,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    pendingProfileRef.current = null;
+    setPendingTwoFactor(false);
     await supabase.auth.signOut();
   };
 
+  const verifyTwoFactorCode = async (code: string): Promise<boolean> => {
+    const profile = pendingProfileRef.current;
+    if (!profile) return false;
+
+    try {
+      const secret = await totpService.getSecret(profile.id);
+      if (!secret) return false;
+
+      const isValid = authenticator.check(code, secret);
+      if (isValid) {
+        pendingProfileRef.current = null;
+        setPendingTwoFactor(false);
+        setupSubscription(profile);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ currentUser, userData, loading, login, register, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ currentUser, userData, loading, pendingTwoFactor, login, register, signInWithGoogle, logout, verifyTwoFactorCode }}>
       {children}
     </AuthContext.Provider>
   );

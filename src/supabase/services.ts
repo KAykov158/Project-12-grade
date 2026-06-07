@@ -270,6 +270,21 @@ export const notificationsService = {
   }
 };
 
+export const totpService = {
+  getSecret: async (userId: string): Promise<string | null> => {
+    const { data } = await supabase.from('profiles').select('totp_secret').eq('id', userId).maybeSingle();
+    return data?.totp_secret || null;
+  },
+  setSecret: async (userId: string, secret: string) => {
+    const { error } = await supabase.from('profiles').update({ totp_secret: secret }).eq('id', userId);
+    if (error) throw error;
+  },
+  clearSecret: async (userId: string) => {
+    const { error } = await supabase.from('profiles').update({ totp_secret: null, two_factor_enabled: false }).eq('id', userId);
+    if (error) throw error;
+  },
+};
+
 function mapProfileToUser(data: any): User {
   return {
     id: data.id,
@@ -278,6 +293,8 @@ function mapProfileToUser(data: any): User {
     nickname: data.nickname || undefined,
     photo: data.photo || undefined,
     role: data.role,
+    theme: data.theme || undefined,
+    twoFactorEnabled: data.two_factor_enabled || false,
     createdAt: new Date(data.created_at)
   };
 }
@@ -290,6 +307,8 @@ function mapUserToDb(data: Partial<User>): any {
   if (data.nickname !== undefined) db.nickname = data.nickname || '';
   if (data.photo !== undefined) db.photo = data.photo || '';
   if (data.role !== undefined) db.role = data.role;
+  if (data.theme !== undefined) db.theme = data.theme;
+  if ('twoFactorEnabled' in data && data.twoFactorEnabled !== undefined) db.two_factor_enabled = data.twoFactorEnabled;
   if ('createdAt' in data && data.createdAt !== undefined) db.created_at = data.createdAt instanceof Date ? data.createdAt.toISOString() : data.createdAt;
   return db;
 }

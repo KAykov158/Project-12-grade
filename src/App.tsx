@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ThemeProvider } from './contexts/ThemeContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { usersService } from './supabase';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -10,9 +11,33 @@ import { ScoreboardPage } from './pages/ScoreboardPage';
 import { MatchesPage } from './pages/MatchesPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { CalendarPage } from './pages/CalendarPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { TwoFactorVerifyPage } from './pages/TwoFactorVerifyPage';
+
+const ThemeProfileSync: React.FC = () => {
+  const { userData } = useAuth();
+  const { setDark } = useTheme();
+
+  useEffect(() => {
+    if (userData?.theme) {
+      setDark(userData.theme === 'dark');
+    }
+  }, [userData?.theme, setDark]);
+
+  useEffect(() => {
+    if (userData) {
+      const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+      if (userData.theme && userData.theme !== currentTheme) {
+        usersService.update(userData.id, { theme: currentTheme }).catch(() => {});
+      }
+    }
+  }, [userData]);
+
+  return null;
+};
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, pendingTwoFactor } = useAuth();
   
   if (loading) {
     return (
@@ -22,6 +47,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     );
   }
   
+  if (pendingTwoFactor) return <Navigate to="/verify-2fa" />;
+  
   return currentUser ? <Layout>{children}</Layout> : <Navigate to="/login" />;
 };
 
@@ -29,15 +56,18 @@ export const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ThemeProfileSync />
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/verify-2fa" element={<TwoFactorVerifyPage />} />
             <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/teams" element={<ProtectedRoute><TeamsPage /></ProtectedRoute>} />
             <Route path="/scoreboard" element={<ProtectedRoute><ScoreboardPage /></ProtectedRoute>} />
             <Route path="/matches" element={<ProtectedRoute><MatchesPage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

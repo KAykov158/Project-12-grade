@@ -8,13 +8,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@otplib/preset-browser": "^12.0.1",
     "@supabase/supabase-js": "^2.106.2",
     "lucide-react": "^0.577.0",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.13.1"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
@@ -22,6 +25,7 @@
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.0.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vite-plugin-node-polyfills": "^0.28.0"
   }
 }

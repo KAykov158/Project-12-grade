@@ -81,6 +81,27 @@ export const MatchesPage: React.FC = () => {
   const selectedHomeTeam = teams.find(t => t.id === formData.homeTeamId);
   const selectedAwayTeam = teams.find(t => t.id === formData.awayTeamId);
 
+  const notifyCoaches = async (homeTeamId: string, awayTeamId: string, matchId: string, homeTeamName: string, awayTeamName: string, title = 'New Match Scheduled', message?: string) => {
+    const homeTeam = teams.find(t => t.id === homeTeamId);
+    const awayTeam = teams.find(t => t.id === awayTeamId);
+    const coachIds = new Set<string>();
+    if (homeTeam?.coachId) coachIds.add(homeTeam.coachId);
+    if (awayTeam?.coachId) coachIds.add(awayTeam.coachId);
+    homeTeam?.assistantCoaches?.forEach(c => coachIds.add(c));
+    awayTeam?.assistantCoaches?.forEach(c => coachIds.add(c));
+    const msg = message || `Your team has a new match: ${homeTeamName} vs ${awayTeamName}`;
+    await Promise.all(Array.from(coachIds).map(userId =>
+      notificationsService.create({
+        userId,
+        matchId,
+        title,
+        message: msg,
+        read: false,
+        createdAt: new Date()
+      }).catch(() => {})
+    ));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.homeDivision || !formData.awayDivision) {
@@ -88,7 +109,7 @@ export const MatchesPage: React.FC = () => {
       return;
     }
     try {
-      await matchesService.create({
+      const newMatchId = await matchesService.create({
         homeTeamId: formData.homeTeamId,
         awayTeamId: formData.awayTeamId,
         homeTeamName: selectedHomeTeam?.name || '',
@@ -102,6 +123,7 @@ export const MatchesPage: React.FC = () => {
         status: 'scheduled',
         createdAt: new Date()
       });
+      await notifyCoaches(formData.homeTeamId, formData.awayTeamId, newMatchId, selectedHomeTeam?.name || '', selectedAwayTeam?.name || '');
     } catch (err) {
       alert('Failed to create match: ' + (err instanceof Error ? err.message : 'Unknown error'));
       return;
@@ -143,6 +165,7 @@ export const MatchesPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to send notification:', err);
     }
+    await notifyCoaches(match.homeTeamId, match.awayTeamId, match.id, match.homeTeamName, match.awayTeamName, 'Match Update', `A referee has been assigned to ${match.homeTeamName} vs ${match.awayTeamName}`);
   };
 
   const removeReferee = async (matchId: string, refereeId: string) => {
@@ -270,6 +293,7 @@ export const MatchesPage: React.FC = () => {
           description: reportForm.description || undefined,
         },
       });
+      await notifyCoaches(reportMatch.homeTeamId, reportMatch.awayTeamId, reportMatch.id, reportMatch.homeTeamName, reportMatch.awayTeamName);
       setReportMatch(null);
     } catch (err) {
       alert('Failed to save report: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
@@ -279,6 +303,7 @@ export const MatchesPage: React.FC = () => {
   const markCompleted = async (match: Match) => {
     try {
       await matchesService.update(match.id, { status: 'completed' });
+      await notifyCoaches(match.homeTeamId, match.awayTeamId, match.id, match.homeTeamName, match.awayTeamName, 'Match Completed', `${match.homeTeamName} vs ${match.awayTeamName} has been marked as completed`);
     } catch (err) {
       alert('Failed to mark match as completed: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
     }

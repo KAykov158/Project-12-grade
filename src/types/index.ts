@@ -7,6 +7,8 @@ export interface User {
   nickname?: string;
   photo?: string;
   role: UserRole;
+  theme?: 'light' | 'dark';
+  twoFactorEnabled?: boolean;
   createdAt: Date;
 }
 
