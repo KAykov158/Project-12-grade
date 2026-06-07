@@ -57,9 +57,26 @@ export const MatchesPage: React.FC = () => {
   }, [matches, highlightId]);
 
   const canManage = userData?.role === 'admin';
+  const coachTeamIds = userData?.role === 'coach'
+    ? teams.filter(t => t.coachId === userData.id).map(t => t.id)
+    : [];
+
   const filteredMatches = matches
-    .filter(m => filter === 'all' || m.status === filter)
-    .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+    .filter(m => {
+      if (filter !== 'all' && m.status !== filter) return false;
+      if (userData?.role === 'coach') {
+        return coachTeamIds.includes(m.homeTeamId) || coachTeamIds.includes(m.awayTeamId);
+      }
+      if (userData?.role === 'referee') {
+        return m.referees?.some(r => r.refereeId === userData.id);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.status === 'scheduled' && b.status !== 'scheduled') return -1;
+      if (a.status !== 'scheduled' && b.status === 'scheduled') return 1;
+      return new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime();
+    });
 
   const selectedHomeTeam = teams.find(t => t.id === formData.homeTeamId);
   const selectedAwayTeam = teams.find(t => t.id === formData.awayTeamId);

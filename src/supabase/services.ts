@@ -128,8 +128,18 @@ export const teamsService = {
     return (data || []).map(mapDbToTeam);
   },
   update: async (id: string, data: Partial<Team>) => {
-    const { error } = await supabase.from('teams').update(mapTeamToDb(data)).eq('id', id);
-    if (error) throw error;
+    let db = mapTeamToDb(data);
+    const tryUpdate = async (payload: any) => {
+      const { error } = await supabase.from('teams').update(payload).eq('id', id);
+      if (error) {
+        if (error.code === 'PGRST204' && payload.assistant_coaches) {
+          const { assistant_coaches, ...rest } = payload;
+          return tryUpdate(rest);
+        }
+        throw error;
+      }
+    };
+    return tryUpdate(db);
   },
   delete: async (id: string) => {
     const { error } = await supabase.from('teams').delete().eq('id', id);
@@ -142,9 +152,19 @@ export const teamsService = {
 
 export const playersService = {
   create: async (playerData: Omit<Player, 'id'>) => {
-    const { data, error } = await supabase.from('players').insert(mapPlayerToDb(playerData)).select().single();
-    if (error) throw error;
-    return data.id;
+    let db = mapPlayerToDb(playerData);
+    const tryInsert = async (payload: any) => {
+      const { data, error } = await supabase.from('players').insert(payload).select().single();
+      if (error) {
+        if (error.code === 'PGRST204' && payload.card_photo) {
+          const { card_photo, ...rest } = payload;
+          return tryInsert(rest);
+        }
+        throw error;
+      }
+      return data.id;
+    };
+    return tryInsert(db);
   },
   getById: async (id: string) => {
     const { data } = await supabase.from('players').select('*').eq('id', id).maybeSingle();
@@ -155,8 +175,18 @@ export const playersService = {
     return (data || []).map(mapDbToPlayer);
   },
   update: async (id: string, data: Partial<Player>) => {
-    const { error } = await supabase.from('players').update(mapPlayerToDb(data)).eq('id', id);
-    if (error) throw error;
+    let db = mapPlayerToDb(data);
+    const tryUpdate = async (payload: any) => {
+      const { error } = await supabase.from('players').update(payload).eq('id', id);
+      if (error) {
+        if (error.code === 'PGRST204' && payload.card_photo) {
+          const { card_photo, ...rest } = payload;
+          return tryUpdate(rest);
+        }
+        throw error;
+      }
+    };
+    return tryUpdate(db);
   },
   delete: async (id: string) => {
     const { error } = await supabase.from('players').delete().eq('id', id);
@@ -271,7 +301,8 @@ function mapTeamToDb(data: Partial<Team> | Omit<Team, 'id'>): any {
   if (data.category !== undefined) db.category = data.category;
   if (data.divisions !== undefined) db.divisions = JSON.stringify(data.divisions);
   if ('coachId' in data && data.coachId) db.coach_id = data.coachId;
-  if ('createdAt' in data && data.createdAt !== undefined) db.created_at = data.createdAt.toISOString();
+  if (data.assistantCoaches !== undefined && data.assistantCoaches.length > 0) db.assistant_coaches = JSON.stringify(data.assistantCoaches);
+  if ('createdAt' in data && data.createdAt !== undefined) db.created_at = data.createdAt instanceof Date ? data.createdAt.toISOString() : data.createdAt;
   return db;
 }
 
@@ -281,6 +312,7 @@ function mapDbToTeam(data: any): Team {
     name: data.name,
     logo: data.logo || undefined,
     coachId: data.coach_id || undefined,
+    assistantCoaches: typeof data.assistant_coaches === 'string' ? JSON.parse(data.assistant_coaches) : (data.assistant_coaches || []),
     category: data.category || '',
     divisions: typeof data.divisions === 'string' ? JSON.parse(data.divisions) : (data.divisions || []),
     createdAt: new Date(data.created_at)
@@ -291,6 +323,7 @@ function mapPlayerToDb(data: Partial<Player> | Omit<Player, 'id'>): any {
   const db: any = {};
   if (data.name !== undefined) db.name = data.name;
   if (data.photo !== undefined) db.photo = data.photo || '';
+  if (data.cardPhoto !== undefined) db.card_photo = data.cardPhoto || '';
   if (data.position !== undefined) db.position = data.position || '';
   if (data.jerseyNumber !== undefined) db.jersey_number = data.jerseyNumber;
   if ('birthDate' in data && data.birthDate !== undefined) db.birth_date = data.birthDate instanceof Date ? data.birthDate.toISOString().split('T')[0] : data.birthDate;
@@ -304,6 +337,7 @@ function mapDbToPlayer(data: any): Player {
     id: data.id,
     name: data.name,
     photo: data.photo || undefined,
+    cardPhoto: data.card_photo || undefined,
     birthDate: new Date(data.birth_date),
     position: data.position || undefined,
     jerseyNumber: data.jersey_number,

@@ -39,6 +39,7 @@ CREATE TABLE teams (
   coach_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
   category TEXT DEFAULT '',
   divisions JSONB DEFAULT '[]'::jsonb,
+  assistant_coaches JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -49,6 +50,7 @@ CREATE TABLE players (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
   photo TEXT DEFAULT '',
+  card_photo TEXT DEFAULT '',
   birth_date DATE NOT NULL,
   position TEXT DEFAULT '',
   jersey_number INTEGER NOT NULL,

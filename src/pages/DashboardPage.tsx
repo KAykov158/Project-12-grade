@@ -25,8 +25,22 @@ export const DashboardPage: React.FC = () => {
     };
   }, []);
 
-  const upcoming = matches.filter(m => m.status === 'scheduled').length;
-  const completed = matches.filter(m => m.status === 'completed').length;
+  const coachTeamIds = userData?.role === 'coach'
+    ? teams.filter(t => t.coachId === userData.id).map(t => t.id)
+    : [];
+
+  const visibleMatches = matches.filter(m => {
+    if (userData?.role === 'coach') {
+      return coachTeamIds.includes(m.homeTeamId) || coachTeamIds.includes(m.awayTeamId);
+    }
+    if (userData?.role === 'referee') {
+      return m.referees?.some(r => r.refereeId === userData.id);
+    }
+    return true;
+  });
+
+  const upcoming = visibleMatches.filter(m => m.status === 'scheduled').length;
+  const completed = visibleMatches.filter(m => m.status === 'completed').length;
   const pendingReferee = userData?.role === 'referee'
     ? matches.filter(m =>
         m.status === 'scheduled' &&
@@ -137,7 +151,7 @@ export const DashboardPage: React.FC = () => {
       <Card>
         <h2 className="text-lg font-semibold mb-4">Recent Matches</h2>
         <div className="space-y-3">
-          {matches.slice(0, 5).map(match => (
+          {visibleMatches.slice(0, 5).map(match => (
             <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
               <div>
                 <p className="font-medium dark:text-gray-100">{match.homeTeamName} vs {match.awayTeamName}</p>
@@ -150,7 +164,7 @@ export const DashboardPage: React.FC = () => {
               </Badge>
             </div>
           ))}
-          {matches.length === 0 && (
+          {visibleMatches.length === 0 && (
             <p className="text-gray-500 text-center py-4">No matches yet</p>
           )}
         </div>

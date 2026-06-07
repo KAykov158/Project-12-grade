@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usersService, supabase } from '../supabase';
-import { LayoutDashboard, Users, UserCircle, Calendar as CalendarIcon, Bell, LogOut, Moon, Sun, Settings, X, Camera, Trash2, Key, Mail, User, Check } from 'lucide-react';
+import { LayoutDashboard, Trophy, Users, UserCircle, Calendar as CalendarIcon, Bell, LogOut, Moon, Sun, Settings, X, Camera, Trash2, Key, Mail, User, Check } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -48,8 +48,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/calendar', icon: CalendarIcon, label: 'Calendar' },
-    { to: '/teams', icon: Users, label: 'Teams', roles: ['admin', 'coach'] },
-
+    { to: '/scoreboard', icon: Trophy, label: 'Scoreboard' },
+    { to: '/teams', icon: Users, label: userData?.role === 'coach' ? 'Squad' : 'Teams', roles: ['admin', 'coach'] },
     { to: '/matches', icon: CalendarIcon, label: 'Matches', roles: ['admin', 'referee', 'coach'] },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
   ];

@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { TeamsPage } from './pages/TeamsPage';
+import { ScoreboardPage } from './pages/ScoreboardPage';
 import { MatchesPage } from './pages/MatchesPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { CalendarPage } from './pages/CalendarPage';
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/teams" element={<ProtectedRoute><TeamsPage /></ProtectedRoute>} />
+            <Route path="/scoreboard" element={<ProtectedRoute><ScoreboardPage /></ProtectedRoute>} />
             <Route path="/matches" element={<ProtectedRoute><MatchesPage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />

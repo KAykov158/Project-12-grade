@@ -14,6 +14,7 @@ export interface Player {
   id: string;
   name: string;
   photo?: string;
+  cardPhoto?: string;
   birthDate: Date;
   position?: string;
   jerseyNumber: number;
@@ -50,6 +51,7 @@ export interface Team {
   name: string;
   logo?: string;
   coachId?: string;
+  assistantCoaches: string[];
   category: string;
   divisions: LeagueType[];
   createdAt: Date;
