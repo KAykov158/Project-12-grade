@@ -100,3 +100,11 @@ After being assigned:
 ---
 
 This concept forms the foundation of a complete referee and match management system.
+
+---
+
+## TODO / Reminders
+
+- Fix verify email after log out (email verification page shows after logout instead of login)
+- Upgrade the agent (improve capabilities, add more tools)
+- Add emails for matches (notify users via email when matches are created/updated)
