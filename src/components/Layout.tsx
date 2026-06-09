@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { notificationsService, usersService } from '../supabase';
 import { Notification } from '../types';
 import { LayoutDashboard, Trophy, Users, UserCircle, Calendar as CalendarIcon, Bell, LogOut, Moon, Sun, Settings, BellRing } from 'lucide-react';
+import { ChatWidget } from './ChatWidget';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -174,6 +175,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {children}
       </div>
+      <ChatWidget />
     </div>
   );
 };

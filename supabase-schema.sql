@@ -26,6 +26,9 @@ CREATE TABLE profiles (
   nickname TEXT DEFAULT '',
   photo TEXT DEFAULT '',
   role TEXT NOT NULL CHECK (role IN ('admin', 'referee', 'coach', 'player')),
+  theme TEXT DEFAULT 'dark',
+  totp_secret TEXT DEFAULT NULL,
+  two_factor_enabled BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -157,9 +160,7 @@ CREATE POLICY "matches_delete" ON matches FOR DELETE USING (
 
 -- Notifications
 CREATE POLICY "notifications_read_own" ON notifications FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "notifications_insert" ON notifications FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
+CREATE POLICY "notifications_insert" ON notifications FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "notifications_update_own" ON notifications FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "notifications_delete_own" ON notifications FOR DELETE USING (auth.uid() = user_id);
 
@@ -184,7 +185,7 @@ BEGIN
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'name', 'User'),
     COALESCE(NEW.raw_user_meta_data->>'nickname', ''),
-    COALESCE(NEW.raw_user_meta_data->>'photo', ''),
+    COALESCE(NEW.raw_user_meta_data->>'photo', NEW.raw_user_meta_data->>'picture', NEW.raw_user_meta_data->>'avatar_url', ''),
     COALESCE(NEW.raw_user_meta_data->>'role', 'referee'),
     NOW()
   )

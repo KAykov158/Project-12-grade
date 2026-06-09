@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Badge, Button } from '../components/ui';
+import { Card, Badge } from '../components/ui';
 import { notificationsService, matchesService } from '../supabase';
 import { Notification } from '../types';
 import { Bell, Check, X } from 'lucide-react';
@@ -10,12 +10,20 @@ export const NotificationsPage: React.FC = () => {
   const { userData } = useAuth();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    if (userData) {
+    if (!userData) return;
+    setError(null);
+    try {
       unsubRef.current = notificationsService.subscribe(userData.id, setNotifications);
+    } catch (err) {
+      setError(String(err));
     }
+    notificationsService.getByUser(userData.id).then(setNotifications).catch((err) => {
+      setError(String(err));
+    });
     return () => {
       unsubRef.current?.();
       unsubRef.current = null;
@@ -45,15 +53,40 @@ export const NotificationsPage: React.FC = () => {
     }
   };
 
+  const markAllAsRead = async () => {
+    if (!userData) return;
+    try {
+      await notificationsService.markAllAsRead(userData.id);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
+  };
+
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  if (error) {
+    return (
+      <Card><p className="text-red-600">Error loading notifications: {error}</p></Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Notifications</h1>
-        {unreadCount > 0 && (
-          <Badge variant="warning">{unreadCount} unread</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <>
+              <Badge variant="warning">{unreadCount} unread</Badge>
+              <button
+                onClick={markAllAsRead}
+                className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <Check className="w-4 h-4" /> Mark all as read
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -64,7 +97,6 @@ export const NotificationsPage: React.FC = () => {
             onClick={() => {
               if (!notification.read) markAsRead(notification.id);
               if (notification.matchId) navigate(`/matches?highlight=${notification.matchId}`);
-              else navigate('/matches');
             }}
           >
             <div className="p-2 bg-blue-100 rounded-full">
@@ -79,7 +111,7 @@ export const NotificationsPage: React.FC = () => {
               </div>
               <p className="text-gray-600 mt-1">{notification.message}</p>
               <div className="flex items-center gap-2 mt-2">
-                {userData?.role === 'referee' && notification.matchId && (
+                {userData?.role === 'referee' && notification.matchId && !notification.read && (
                   <>
                     <button
                       disabled={responding === notification.id}

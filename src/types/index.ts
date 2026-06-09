@@ -89,6 +89,12 @@ export interface MatchResult {
   description?: string;
 }
 
+export interface MatchLineup {
+  submittedBy: string;
+  starting: string[];
+  substitutes: string[];
+}
+
 export interface Match {
   id: string;
   homeTeamId: string;
@@ -105,6 +111,7 @@ export interface Match {
   referees: RefereeAssignment[];
   status: 'scheduled' | 'completed' | 'cancelled';
   createdAt: Date;
+  lineup?: MatchLineup[];
 }
 
 export interface Notification {

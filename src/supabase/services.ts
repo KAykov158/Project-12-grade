@@ -28,7 +28,8 @@ function subscribeToTable<T>(
   load();
 
   const filterStr = filter ? `${filter.column}=eq.${filter.value}` : undefined;
-  const channelName = filter ? `${table}-${filter.column}-${filter.value}` : `${table}-all`;
+  const uid = (subscribeToTable as any).__uid = ((subscribeToTable as any).__uid || 0) + 1;
+  const channelName = `${table}-${uid}`;
 
   channel = supabase
     .channel(channelName)
@@ -245,6 +246,15 @@ export const matchesService = {
   },
   subscribe: (callback: (matches: Match[]) => void) => {
     return subscribeToTable<Match>('matches', callback, undefined, mapDbToMatch);
+  },
+  submitLineup: async (matchId: string, starting: string[], substitutes: string[], userId: string) => {
+    const { data: matchData } = await supabase.from('matches').select('lineup').eq('id', matchId).maybeSingle();
+    if (!matchData) throw new Error('Match not found');
+    const current = typeof matchData.lineup === 'string' ? JSON.parse(matchData.lineup) : (matchData.lineup || []);
+    const existing = current.filter((l: any) => l.submittedBy !== userId);
+    const updated = [...existing, { submittedBy: userId, starting, substitutes }];
+    const { error } = await supabase.from('matches').update({ lineup: updated }).eq('id', matchId);
+    if (error) throw error;
   }
 };
 
@@ -263,6 +273,10 @@ export const notificationsService = {
   },
   markAsRead: async (id: string) => {
     const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+    if (error) throw error;
+  },
+  markAllAsRead: async (userId: string) => {
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
     if (error) throw error;
   },
   subscribe: (userId: string, callback: (notifications: Notification[]) => void) => {
@@ -379,6 +393,7 @@ function mapMatchToDb(data: Partial<Match> | Omit<Match, 'id'>): any {
   if (data.status !== undefined) db.status = data.status;
   if (data.referees !== undefined) db.referees = data.referees;
   if (data.result !== undefined) db.result = data.result || null;
+  if (data.lineup !== undefined) db.lineup = data.lineup;
   if ('dateTime' in data && data.dateTime !== undefined) db.date_time = data.dateTime instanceof Date ? data.dateTime.toISOString() : data.dateTime;
   if ('createdAt' in data && data.createdAt !== undefined) db.created_at = data.createdAt.toISOString();
   return db;
@@ -400,7 +415,8 @@ function mapDbToMatch(data: any): Match {
     comments: data.comments || undefined,
     referees: typeof data.referees === 'string' ? JSON.parse(data.referees) : (data.referees || []),
     status: data.status,
-    createdAt: new Date(data.created_at)
+    createdAt: new Date(data.created_at),
+    lineup: typeof data.lineup === 'string' ? JSON.parse(data.lineup) : (data.lineup || [])
   };
 }
 

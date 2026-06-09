@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
-import { usersService } from './supabase';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -13,6 +12,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TwoFactorVerifyPage } from './pages/TwoFactorVerifyPage';
+import { AuthConfirmPage } from './pages/AuthConfirmPage';
 
 const ThemeProfileSync: React.FC = () => {
   const { userData } = useAuth();
@@ -23,15 +23,6 @@ const ThemeProfileSync: React.FC = () => {
       setDark(userData.theme === 'dark');
     }
   }, [userData?.theme, setDark]);
-
-  useEffect(() => {
-    if (userData) {
-      const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-      if (userData.theme && userData.theme !== currentTheme) {
-        usersService.update(userData.id, { theme: currentTheme }).catch(() => {});
-      }
-    }
-  }, [userData]);
 
   return null;
 };
@@ -60,6 +51,7 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/auth/confirm" element={<AuthConfirmPage />} />
             <Route path="/verify-2fa" element={<TwoFactorVerifyPage />} />
             <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/teams" element={<ProtectedRoute><TeamsPage /></ProtectedRoute>} />

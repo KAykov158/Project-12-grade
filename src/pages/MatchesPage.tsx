@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Input, Modal, Select, Badge } from '../components/ui';
-import { matchesService, teamsService, usersService, notificationsService } from '../supabase';
-import { Match, Team, User, RefereeAssignment, LeagueType, GoalEvent, CardEvent } from '../types';
-import { Plus, Check, X, MapPin, Calendar as CalendarIcon, UserCircle, Trash2, Edit2 } from 'lucide-react';
+import { matchesService, teamsService, usersService, notificationsService, playersService } from '../supabase';
+import { Match, Team, User, RefereeAssignment, LeagueType, GoalEvent, CardEvent, Player } from '../types';
+import { Plus, Check, X, MapPin, Calendar as CalendarIcon, UserCircle, Trash2, Edit2, Users } from 'lucide-react';
 
 export const MatchesPage: React.FC = () => {
   const { userData } = useAuth();
@@ -35,6 +35,12 @@ export const MatchesPage: React.FC = () => {
     location: '',
     category: ''
   });
+  const [lineupMatch, setLineupMatch] = useState<Match | null>(null);
+  const [lineupTeamPlayers, setLineupTeamPlayers] = useState<Player[]>([]);
+  const [lineupStarting, setLineupStarting] = useState<string[]>([]);
+  const [lineupSubstitutes, setLineupSubstitutes] = useState<string[]>([]);
+  const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
+  const [viewingLineup, setViewingLineup] = useState(false);
 
   useEffect(() => {
     const unsubMatches = matchesService.subscribe(setMatches);
@@ -177,6 +183,17 @@ export const MatchesPage: React.FC = () => {
     const updatedReferees = match.referees.filter(r => r.refereeId !== refereeId);
     try {
       await matchesService.update(matchId, { referees: updatedReferees });
+      const removed = match.referees.find(r => r.refereeId === refereeId);
+      if (removed) {
+        await notificationsService.create({
+          userId: refereeId,
+          matchId,
+          title: 'Removed from Match',
+          message: `You have been removed from ${match.homeTeamName} vs ${match.awayTeamName}.`,
+          read: false,
+          createdAt: new Date(),
+        }).catch(() => {});
+      }
     } catch (err) {
       alert('Failed to remove referee: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
     }
@@ -191,6 +208,14 @@ export const MatchesPage: React.FC = () => {
     );
     try {
       await matchesService.update(matchId, { referees: updatedReferees });
+      await notificationsService.create({
+        userId: refereeId,
+        matchId,
+        title: 'Role Changed',
+        message: `Your role for ${match.homeTeamName} vs ${match.awayTeamName} has been changed to ${newRole}.`,
+        read: false,
+        createdAt: new Date(),
+      }).catch(() => {});
     } catch (err) {
       alert('Failed to change referee role: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
@@ -199,6 +224,21 @@ export const MatchesPage: React.FC = () => {
   const respondToMatch = async (matchId: string, status: 'accepted' | 'declined') => {
     try {
       await matchesService.updateRefereeStatus(matchId, userData!.id, status);
+      const match = matches.find(m => m.id === matchId);
+      if (match) {
+        const me = referees.find(r => r.id === userData!.id);
+        const label = status === 'accepted' ? 'accepted' : 'declined';
+        await notifyCoaches(
+          match.homeTeamId, match.awayTeamId, match.id,
+          match.homeTeamName, match.awayTeamName,
+          'Referee Response',
+          `${me?.name || 'A referee'} has ${label} the assignment for ${match.homeTeamName} vs ${match.awayTeamName}.`
+        );
+        notificationsService.getByUser(userData!.id).then(all => {
+          const n = all.find(n => n.matchId === matchId && !n.read);
+          if (n) notificationsService.markAsRead(n.id);
+        }).catch(() => {});
+      }
     } catch (err) {
       alert('Failed to respond: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
@@ -309,6 +349,99 @@ export const MatchesPage: React.FC = () => {
     }
   };
 
+  const getMaxAgeForDivision = (division: string): number | null => {
+    const matchNum = division.match(/U(\d+)/);
+    if (matchNum) return parseInt(matchNum[1]);
+    if (division.includes('Professional')) return null;
+    return null;
+  };
+
+  const getMinAgeForDivision = (division: string): number | null => {
+    if (division.includes('Professional')) return 18;
+    return null;
+  };
+
+  const filterPlayersByDivision = (players: Player[], division: string): Player[] => {
+    const maxAge = getMaxAgeForDivision(division);
+    const minAge = getMinAgeForDivision(division);
+    const now = new Date();
+    return players.filter(p => {
+      const age = now.getFullYear() - new Date(p.birthDate).getFullYear();
+      if (maxAge !== null && age > maxAge) return false;
+      if (minAge !== null && age < minAge) return false;
+      return true;
+    });
+  };
+
+  const openLineup = async (match: Match) => {
+    setLineupMatch(match);
+    const myTeamId = coachTeamIds.find(id => id === match.homeTeamId || id === match.awayTeamId);
+    if (!myTeamId) return;
+    const players = await playersService.getByTeam(myTeamId);
+    const division = myTeamId === match.homeTeamId ? match.homeDivision : match.awayDivision;
+    setLineupTeamPlayers(filterPlayersByDivision(players, division));
+    const existing = match.lineup?.find(l => l.submittedBy === userData?.id);
+    setLineupStarting(existing?.starting || []);
+    setLineupSubstitutes(existing?.substitutes || []);
+  };
+
+  const submitLineup = async () => {
+    if (!lineupMatch || !userData) return;
+    try {
+      await matchesService.submitLineup(lineupMatch.id, lineupStarting, lineupSubstitutes, userData.id);
+      setLineupMatch(null);
+      setLineupStarting([]);
+      setLineupSubstitutes([]);
+      setLineupTeamPlayers([]);
+    } catch (err) {
+      alert('Failed to submit lineup: ' + (err instanceof Error ? err.message : JSON.stringify(err)));
+    }
+  };
+
+  const toggleStarting = (playerId: string) => {
+    setLineupStarting(prev =>
+      prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]
+    );
+    setLineupSubstitutes(prev => prev.filter(id => id !== playerId));
+  };
+
+  const toggleSubstitute = (playerId: string) => {
+    setLineupSubstitutes(prev =>
+      prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]
+    );
+    setLineupStarting(prev => prev.filter(id => id !== playerId));
+  };
+
+  const openLineupView = async (match: Match) => {
+    setViewingLineup(true);
+    setLineupMatch(match);
+    const teamIds = [match.homeTeamId, match.awayTeamId].filter(Boolean);
+    const results = await Promise.all(teamIds.map(id => playersService.getByTeam(id)));
+    const map: Record<string, string> = {};
+    for (const list of results) {
+      for (const p of list) map[p.id] = p.name;
+    }
+    setPlayerNames(prev => ({ ...prev, ...map }));
+  };
+
+  useEffect(() => {
+    const teamIds = new Set<string>();
+    for (const m of matches) {
+      if (m.lineup?.length) {
+        if (m.homeTeamId) teamIds.add(m.homeTeamId);
+        if (m.awayTeamId) teamIds.add(m.awayTeamId);
+      }
+    }
+    if (teamIds.size === 0) return;
+    Promise.all([...teamIds].map(id => playersService.getByTeam(id))).then(results => {
+      const map: Record<string, string> = {};
+      for (const list of results) {
+        for (const p of list) map[p.id] = p.name;
+      }
+      setPlayerNames(map);
+    });
+  }, [matches]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -383,6 +516,14 @@ export const MatchesPage: React.FC = () => {
                       {match.result ? 'Edit Report' : 'Submit Report'}
                     </button>
                   )}
+                  {userData?.role === 'referee' && match.lineup && match.lineup.length > 0 && (
+                    <button
+                      onClick={() => openLineupView(match)}
+                      className="text-xs text-blue-600 hover:underline mt-2 block"
+                    >
+                      View Lineup
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -409,7 +550,7 @@ export const MatchesPage: React.FC = () => {
                   </div>
 
                   {expandedReport === match.id && (
-                    <div className="bg-gray-50 dark:bg-gray-750 p-3 rounded-lg mt-1 space-y-2">
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg mt-1 space-y-2">
 
                   {match.result.goals.length > 0 && (
                     <div>
@@ -417,7 +558,7 @@ export const MatchesPage: React.FC = () => {
                       <div className="space-y-0.5">
                         {match.result.goals.map((g, i) => (
                           <p key={i} className="text-sm dark:text-gray-200">
-                            <span className={g.team === 'home' ? 'text-blue-600' : 'text-red-600'}>
+                            <span className="font-medium">
                               {g.team === 'home' ? match.homeTeamName : match.awayTeamName}
                             </span>{' '}
                             {g.scorer} ({g.minute}&apos;)
@@ -435,7 +576,7 @@ export const MatchesPage: React.FC = () => {
                       <div className="space-y-0.5">
                         {match.result.yellowCards.map((c, i) => (
                           <p key={i} className="text-sm dark:text-gray-200">
-                            <span className={c.team === 'home' ? 'text-blue-600' : 'text-red-600'}>
+                            <span className="font-medium">
                               {c.team === 'home' ? match.homeTeamName : match.awayTeamName}
                             </span>{' '}
                             {c.player} ({c.minute}&apos;)
@@ -453,7 +594,7 @@ export const MatchesPage: React.FC = () => {
                       <div className="space-y-0.5">
                         {match.result.redCards.map((c, i) => (
                           <p key={i} className="text-sm dark:text-gray-200">
-                            <span className={c.team === 'home' ? 'text-blue-600' : 'text-red-600'}>
+                            <span className="font-medium">
                               {c.team === 'home' ? match.homeTeamName : match.awayTeamName}
                             </span>{' '}
                             {c.player} ({c.minute}&apos;)
@@ -531,6 +672,71 @@ export const MatchesPage: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {match.lineup && match.lineup.length > 0 && (
+                <div className="border-t dark:border-gray-600 pt-3 mt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Team Lineups</p>
+                    {userData?.role === 'coach' && match.status === 'scheduled' && coachTeamIds.some(id => id === match.homeTeamId || id === match.awayTeamId) && (
+                      <Button size="sm" variant="outline" onClick={() => openLineup(match)}>
+                        <Users className="w-3 h-3 mr-1" />
+                        {match.lineup?.some(l => l.submittedBy === userData?.id) ? 'Edit Lineup' : 'Submit Lineup'}
+                      </Button>
+                    )}
+                  </div>
+                  {match.lineup.map((l, i) => {
+                    const homeCoach = teams.find(t => t.id === match.homeTeamId)?.coachId;
+                    const teamName = l.submittedBy === homeCoach ? match.homeTeamName : match.awayTeamName;
+                    const isMine = l.submittedBy === userData?.id;
+                    if (!isMine && userData?.role === 'coach') return null;
+                    const starting = l.starting || [];
+                    const substitutes = l.substitutes || [];
+                    return (
+                      <div key={i} className="text-sm space-y-1 mb-3">
+                        <p className="font-medium dark:text-gray-200">{teamName}{isMine ? ' (Your team)' : ''}</p>
+                        <div className="ml-2">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Starting XI:</p>
+                          {starting.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {starting.map(pid => (
+                                <span key={pid} className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-2 py-0.5 rounded text-xs">
+                                  {playerNames[pid] || pid.slice(0, 8)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">None selected</p>
+                          )}
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Substitutes:</p>
+                          {substitutes.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {substitutes.map(pid => (
+                                <span key={pid} className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded text-xs">
+                                  {playerNames[pid] || pid.slice(0, 8)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">None</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {userData?.role === 'coach' && match.status === 'scheduled' && coachTeamIds.some(id => id === match.homeTeamId || id === match.awayTeamId) && !match.lineup?.some(l => l.submittedBy === userData?.id) && (
+                <div className="border-t dark:border-gray-600 pt-3 mt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Team Lineup</p>
+                    <Button size="sm" variant="outline" onClick={() => openLineup(match)}>
+                      <Users className="w-3 h-3 mr-1" />
+                      Submit Lineup
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {canRespond && (
                 <div className="flex gap-2 pt-2 border-t dark:border-gray-600">
@@ -818,6 +1024,107 @@ export const MatchesPage: React.FC = () => {
             <Button onClick={submitReport} className="flex-1">Save Report</Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal isOpen={!!lineupMatch} onClose={() => { setLineupMatch(null); setLineupStarting([]); setLineupSubstitutes([]); setLineupTeamPlayers([]); setViewingLineup(false); }} title={viewingLineup ? "Match Lineups" : "Submit Lineup"}>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {lineupMatch?.homeTeamName} vs {lineupMatch?.awayTeamName}
+          </p>
+
+          {viewingLineup ? (
+            <div className="space-y-4">
+              {lineupMatch?.lineup?.map((l, i) => {
+                const homeCoach = teams.find(t => t.id === lineupMatch.homeTeamId)?.coachId;
+                const teamName = l.submittedBy === homeCoach ? lineupMatch.homeTeamName : lineupMatch.awayTeamName;
+                const starting = l.starting || [];
+                const substitutes = l.substitutes || [];
+                return (
+                  <div key={i}>
+                    <p className="font-medium text-sm dark:text-gray-200 mb-1">{teamName}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Starting XI:</p>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {starting.map(pid => (
+                        <span key={pid} className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-2 py-0.5 rounded text-xs">
+                          {playerNames[pid] || pid.slice(0, 8)}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Substitutes:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {substitutes.map(pid => (
+                        <span key={pid} className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded text-xs">
+                          {playerNames[pid] || pid.slice(0, 8)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <Button type="button" variant="outline" onClick={() => { setLineupMatch(null); setViewingLineup(false); setLineupStarting([]); setLineupSubstitutes([]); setLineupTeamPlayers([]); }} className="w-full">
+                Close
+              </Button>
+            </div>
+          ) : (
+            <>
+
+          <div>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Starting XI ({lineupStarting.length})</p>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {lineupTeamPlayers.map(p => (
+                <label key={p.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer ${lineupStarting.includes(p.id) ? 'bg-green-50 dark:bg-green-900/20' : lineupSubstitutes.includes(p.id) ? 'opacity-50' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                  <input
+                    type="checkbox"
+                    checked={lineupStarting.includes(p.id)}
+                    onChange={() => toggleStarting(p.id)}
+                    className="rounded"
+                  />
+                  <div>
+                    <p className="text-sm font-medium dark:text-gray-100">{p.name}</p>
+                    <p className="text-xs text-gray-500">#{p.jerseyNumber} - {p.position || 'No position'}</p>
+                  </div>
+                  {lineupSubstitutes.includes(p.id) && <span className="text-xs text-gray-400 ml-auto">Substitute</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Substitutes ({lineupSubstitutes.length})</p>
+            <div className="space-y-1 max-h-36 overflow-y-auto">
+              {lineupTeamPlayers.filter(p => !lineupStarting.includes(p.id)).map(p => (
+                <label key={p.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer ${lineupSubstitutes.includes(p.id) ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                  <input
+                    type="checkbox"
+                    checked={lineupSubstitutes.includes(p.id)}
+                    onChange={() => toggleSubstitute(p.id)}
+                    className="rounded"
+                  />
+                  <div>
+                    <p className="text-sm font-medium dark:text-gray-100">{p.name}</p>
+                    <p className="text-xs text-gray-500">#{p.jerseyNumber} - {p.position || 'No position'}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {lineupTeamPlayers.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-4">No players match this division's age requirements</p>
+          )}
+
+          <p className="text-xs text-gray-400">{lineupStarting.length + lineupSubstitutes.length} total players selected</p>
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => { setLineupMatch(null); setLineupStarting([]); setLineupSubstitutes([]); setLineupTeamPlayers([]); }} className="flex-1">
+              Cancel
+            </Button>
+            <Button onClick={submitLineup} disabled={lineupStarting.length === 0} className="flex-1">
+              Save Lineup
+            </Button>
+          </div>
+            </>
+          )}
+    </div>
       </Modal>
     </div>
   );

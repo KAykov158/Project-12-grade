@@ -4,9 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { usersService } from '../supabase';
 import { Button } from '../components/ui';
 import {
-  Shield, Calendar, Users, ArrowRight, Eye, EyeOff,
-  Mail, Lock, User, Sparkles, ChevronRight, ClipboardList, LogIn, UserPlus,
-
+  Shield, Calendar, Users, ArrowRight, Eye, EyeOff, ArrowLeft,
+  Mail, Lock, User, Sparkles, ChevronRight, ClipboardList, LogIn, UserPlus, Chrome
 } from 'lucide-react';
 
 interface ValidationError {
@@ -40,7 +39,7 @@ const features = [
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, login, register, signInWithGoogle } = useAuth();
+  const { currentUser, login, register, signInWithGoogle, needsEmailVerification, resendVerification, resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
@@ -51,6 +50,11 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
+  const [verifyEmailSent, setVerifyEmailSent] = useState(false);
+  const [showVerifyBanner, setShowVerifyBanner] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -96,13 +100,20 @@ export const LoginPage: React.FC = () => {
 
     try {
       if (isRegister) {
-        await register(email, password, name, role, nickname);
+        const result = await register(email, password, name, role, nickname);
+        if (result) {
+          setEmail(email);
+          setShowVerifyBanner(true);
+          return;
+        }
       } else {
         await handleLogin(email, password);
       }
     } catch (err: any) {
       if (err.message === 'User not found') {
         setErrors([{ type: 'login', message: 'User not found. Check your email or nickname.' }]);
+      } else if (err.code === 'email_not_confirmed' || err.message?.includes('Email not confirmed')) {
+        setShowVerifyBanner(true);
       } else if (isRegister) {
         setErrors([{ type: 'login', message: err.message || 'Registration failed. Please try again.' }]);
       } else {
@@ -116,6 +127,7 @@ export const LoginPage: React.FC = () => {
   const toggleMode = () => {
     setIsRegister(!isRegister);
     setErrors([]);
+    setShowVerifyBanner(false);
   };
 
   const loginError = errors.find(e => e.type === 'login');
@@ -262,6 +274,85 @@ export const LoginPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Email verification banner */}
+          {(showVerifyBanner || needsEmailVerification) && (
+            <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl animate-slide-down">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Verify your email</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
+                A confirmation link was sent to <strong>{email}</strong>. Please check your inbox and click the link to activate your account.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    setVerifyEmailSent(true);
+                    await resendVerification(email);
+                    setTimeout(() => setVerifyEmailSent(false), 3000);
+                  } catch {}
+                }}
+                disabled={verifyEmailSent}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+              >
+                {verifyEmailSent ? 'Sent!' : 'Resend confirmation email'}
+              </button>
+            </div>
+          )}
+
+          {/* Forgot Password */}
+          {showForgotPassword ? (
+            <div className="mt-8 animate-fade-in-up stagger-3">
+              <button
+                type="button"
+                onClick={() => { setShowForgotPassword(false); setResetSent(false); }}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-6"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to sign in
+              </button>
+
+              {resetSent ? (
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                  <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200 mb-1">Check your email</p>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                    A password reset link has been sent to <strong>{email}</strong>.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!email) return;
+                  setResetSending(true);
+                  try {
+                    await resetPassword(email);
+                    setResetSent(true);
+                  } catch {}
+                  setResetSending(false);
+                }} className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        placeholder="email@example.com"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={resetSending}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 rounded-xl font-semibold text-white disabled:opacity-60"
+                  >
+                    {resetSending ? 'Sending...' : 'Send Reset Link'}
+                  </Button>
+                </form>
+              )}
+            </div>
+          ) : (
+          <>
           {/* Form */}
           <form onSubmit={handleSubmit} className="mt-8 space-y-5 animate-fade-in-up stagger-3">
             {isRegister && (
@@ -358,6 +449,17 @@ export const LoginPage: React.FC = () => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {!isRegister && (
+                <div className="flex justify-end mt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setShowForgotPassword(true); setErrors([]); }}
+                    className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Error message */}
@@ -425,6 +527,26 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
+          {/* Divider */}
+          <div className="relative my-6 animate-fade-in-up stagger-3">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-gray-50 dark:bg-gray-900 px-3 text-gray-500 dark:text-gray-400">or continue with</span>
+            </div>
+          </div>
+
+          {/* Google Sign-In */}
+          <button
+            type="button"
+            onClick={signInWithGoogle}
+            className="w-full py-3 px-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-3 animate-fade-in-up stagger-3"
+          >
+            <Chrome className="w-5 h-5" />
+            {isRegister ? 'Sign up with Google' : 'Sign in with Google'}
+          </button>
+
           {/* Toggle mode */}
           <p className="text-center mt-6 text-sm text-gray-500 dark:text-gray-400 animate-fade-in-up stagger-4">
             {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
@@ -435,6 +557,8 @@ export const LoginPage: React.FC = () => {
               {isRegister ? 'Sign in' : 'Create one'}
             </button>
           </p>
+          </>
+          )}
         </div>
       </div>
     </div>
