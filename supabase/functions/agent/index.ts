@@ -24,6 +24,10 @@ IMPORTANT: Never include any IDs or UUIDs in your response text. Use team names 
 IMPORTANT: No markdown, no asterisks, no bullet symbols, no special characters. Use plain text only.
 IMPORTANT: If the user asks to do something but doesn't provide all required info, ask them for the missing details before calling a tool.
 
+IMPORTANT: NEVER guess or fabricate match IDs under any circumstances. Match IDs are UUIDs like "c1e9a36a-1021-40bb-b5be-3a2b83766bde". You MUST always call getMatches or getUpcomingMatches first to find the real match ID, then use that real ID in your tool call. NEVER use made-up IDs like "spartak-fratriq-2023-06-11" or "fratriq-topoli-2023-06-11". If you don't know the match ID, call getMatches to find it. If you can't find the match, tell the user you couldn't find it.
+
+IMPORTANT: When the user says a team name like "Spartak U14" or "Fratriq U14", the "U14" part is the division, not the team name. Use getTeams to find the team (e.g. "Spartak"), then set homeDivision/awayDivision to "U14" in addMatch. The team's name in the database is just "Spartak", and the division is a separate field.
+
 When presenting data, use this exact format with each item on its own line:
 
 Standings format:
@@ -304,6 +308,108 @@ async function callTool(name: string, args: any, supabase: any) {
   }
 }
 
+function formatToolResult(tool: string, result: any): string {
+  if (result === null || result === undefined) return "No data found.";
+  if (result.error) return `Error: ${result.error}`;
+
+  switch (tool) {
+    case "getMatches":
+    case "getUpcomingMatches":
+    case "getPendingAssignments": {
+      if (!Array.isArray(result) || result.length === 0) return "No matches found.";
+      return result.map((m: any) => {
+        const lines = [`${m.home_team_name} vs ${m.away_team_name}`];
+        if (m.date_time) {
+          const d = new Date(m.date_time);
+          lines.push(`Date: ${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`);
+        }
+        if (m.location) lines.push(`Location: ${m.location}`);
+        if (m.home_division) lines.push(`Division: ${m.home_division}`);
+        lines.push(`Status: ${m.status}`);
+        if (m.result) lines.push(`Score: ${m.result.homeScore} - ${m.result.awayScore}`);
+        return lines.join("\n");
+      }).join("\n\n");
+    }
+    case "getTeams": {
+      if (!Array.isArray(result) || result.length === 0) return "No teams found.";
+      return result.map((t: any) => {
+        const lines = [t.name];
+        if (t.category) lines.push(`Category: ${t.category}`);
+        if (t.divisions) {
+          const divs = typeof t.divisions === "string" ? JSON.parse(t.divisions) : t.divisions;
+          if (Array.isArray(divs) && divs.length > 0) lines.push(`Divisions: ${divs.join(", ")}`);
+        }
+        return lines.join("\n");
+      }).join("\n\n");
+    }
+    case "getUsersByRole": {
+      if (!Array.isArray(result) || result.length === 0) return `No ${result.role || "users"} found.`;
+      return result.map((u: any) => `${u.name || u.email}`).join("\n");
+    }
+    case "getNotifications": {
+      if (!Array.isArray(result) || result.length === 0) return "No notifications.";
+      return result.map((n: any) => `${n.title}: ${n.message}`).join("\n");
+    }
+    case "getMatchDetails": {
+      if (!result) return "Match not found.";
+      const m = result;
+      const lines = [`${m.home_team_name} vs ${m.away_team_name}`];
+      if (m.date_time) {
+        const d = new Date(m.date_time);
+        lines.push(`Date: ${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`);
+      }
+      if (m.location) lines.push(`Location: ${m.location}`);
+      if (m.home_division) lines.push(`Division: ${m.home_division}`);
+      lines.push(`Status: ${m.status}`);
+      if (m.result) lines.push(`Score: ${m.result.homeScore} - ${m.result.awayScore}`);
+      if (m.referees?.length > 0) {
+        lines.push("Referees: " + m.referees.map((r: any) => `${r.refereeName} (${r.role}, ${r.status})`).join(", "));
+      }
+      return lines.join("\n");
+    }
+    case "getStandings": {
+      if (!Array.isArray(result) || result.length === 0) return "No standings data.";
+      return result.map((s: any, i: number) => {
+        const gd = s.goalsFor - s.goalsAgainst;
+        const gdStr = gd >= 0 ? `+${gd}` : `${gd}`;
+        return `${i + 1}. ${s.teamName}\n   Played: ${s.played} | W: ${s.wins} | D: ${s.draws} | L: ${s.losses} | GF: ${s.goalsFor} | GA: ${s.goalsAgainst} | GD: ${gdStr} | Pts: ${s.points}`;
+      }).join("\n\n");
+    }
+    case "getTopScorers": {
+      if (!Array.isArray(result) || result.length === 0) return "No goal scorers found.";
+      return result.map((s: any, i: number) => `${i + 1}. ${s.scorer} (${s.team}) - ${s.goals} goals`).join("\n");
+    }
+    case "viewLineup": {
+      if (!result.lineup || !Array.isArray(result.lineup) || result.lineup.length === 0) return "No lineup submitted for this match.";
+      return result.lineup.map((l: any) => {
+        const teamLabel = l.submittedBy === "home" ? result.match?.split(" vs ")[0] : result.match?.split(" vs ")[1] || "Team";
+        const lines = [`${teamLabel} Lineup:`];
+        if (l.starting?.length > 0) lines.push(`Starting XI: ${l.starting.join(", ")}`);
+        if (l.substitutes?.length > 0) lines.push(`Substitutes: ${l.substitutes.join(", ")}`);
+        return lines.join("\n");
+      }).join("\n\n");
+    }
+    default: {
+      if (result.success) {
+        let parts: string[] = [];
+        if (result.match) parts.push(`Match: ${result.match}`);
+        if (result.team) parts.push(`Team: ${result.team}`);
+        if (result.player) parts.push(`Player: ${result.player}`);
+        if (result.referee) parts.push(`Referee: ${result.referee}`);
+        if (result.role) parts.push(`Role: ${result.role}`);
+        if (result.status) parts.push(`Status: ${result.status}`);
+        if (result.starting !== undefined) parts.push(`Starting players: ${result.starting}`);
+        if (result.substitutes !== undefined) parts.push(`Substitutes: ${result.substitutes}`);
+        if (result.updated?.length > 0) parts.push(`Updated: ${result.updated.join(", ")}`);
+        if (result.result) parts.push(`Score: ${result.result.homeScore} - ${result.result.awayScore}`);
+        return parts.length > 0 ? `Done. ${parts.join(" | ")}` : "Done.";
+      }
+      if (typeof result === "string") return result;
+      return JSON.stringify(result);
+    }
+  }
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -368,24 +474,28 @@ Deno.serve(async (req) => {
         const braceStart = trimmed.indexOf('{');
         const braceEnd = trimmed.lastIndexOf('}');
 
-        if (braceStart !== -1 && braceEnd > braceStart) {
+        const isToolCall = braceStart !== -1 && braceEnd > braceStart && (() => {
           const jsonStr = trimmed.slice(braceStart, braceEnd + 1);
-          if (jsonStr.includes('"tool"')) {
-            try {
-          const parsed = JSON.parse(jsonStr);
-          const toolResult = await callTool(parsed.tool, { ...parsed.args, _userId: user.id }, supabase);
-          messages.push({ role: "assistant", content: trimmed });
-          messages.push({ role: "user", content: `Tool "${parsed.tool}" returned: ${JSON.stringify(toolResult)}\n\nSummarize this naturally using the format examples. Never include any IDs or UUIDs in your response.` });
-              break;
-            } catch {
-              // not valid JSON, fall through
-            }
+          return jsonStr.includes('"tool"');
+        })();
+
+        if (isToolCall) {
+          const jsonStr = trimmed.slice(braceStart, braceEnd + 1);
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const toolResult = await callTool(parsed.tool, { ...parsed.args, _userId: user.id }, supabase);
+            finalText = formatToolResult(parsed.tool, toolResult);
+            break;
+          } catch {
+            // tool call failed, fall through to treat as normal response
           }
         }
 
-    finalText = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    finalText = finalText.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '').trim();
-    break;
+        const cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        if (!isToolCall && cleaned) {
+          finalText = cleaned.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '').trim();
+        }
+        break;
       }
 
       const errText = await res.text();

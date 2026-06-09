@@ -5,6 +5,22 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS totp_secret TEXT DEFAULT NULL;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT 'dark';
 
+-- Add lineup column to matches table (JSONB array of { submittedBy, starting[], substitutes[] })
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS lineup JSONB DEFAULT '[]'::jsonb;
+
+-- Allow coaches to update matches they are involved in (for lineup submission)
+CREATE POLICY "matches_update_coach" ON matches FOR UPDATE USING (
+  EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'coach'
+  )
+) WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM teams
+    WHERE teams.coach_id = auth.uid()
+    AND (teams.id = matches.home_team_id OR teams.id = matches.away_team_id)
+  )
+);
+
 -- Sync Google profile photo on future sign-ups
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$

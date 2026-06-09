@@ -78,6 +78,7 @@ CREATE TABLE matches (
   result JSONB DEFAULT NULL,
   comments TEXT DEFAULT '',
   referees JSONB DEFAULT '[]'::jsonb,
+  lineup JSONB DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'completed', 'cancelled')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -152,6 +153,17 @@ CREATE POLICY "matches_update_referees" ON matches FOR UPDATE USING (
       CASE WHEN jsonb_typeof(referees) = 'array' THEN referees ELSE '[]'::jsonb END
     ) AS referee
     WHERE (referee->>'refereeId')::uuid = auth.uid()
+  )
+);
+CREATE POLICY "matches_update_coach" ON matches FOR UPDATE USING (
+  EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'coach'
+  )
+) WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM teams
+    WHERE teams.coach_id = auth.uid()
+    AND (teams.id = matches.home_team_id OR teams.id = matches.away_team_id)
   )
 );
 CREATE POLICY "matches_delete" ON matches FOR DELETE USING (

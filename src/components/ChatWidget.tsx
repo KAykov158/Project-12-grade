@@ -74,7 +74,7 @@ export const ChatWidget: React.FC = () => {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-50 bg-green-700 text-white p-4 rounded-full shadow-xl hover:bg-green-800 transition-colors"
+          className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 bg-green-700 text-white p-4 rounded-full shadow-xl hover:bg-green-800 transition-colors"
           title="AI Assistant"
         >
           <MessageCircle className="w-6 h-6" />
@@ -82,7 +82,7 @@ export const ChatWidget: React.FC = () => {
       )}
 
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border dark:border-gray-700 flex flex-col overflow-hidden">
+        <div className="fixed bottom-0 sm:bottom-6 right-0 sm:right-6 z-50 w-full sm:w-96 max-w-[calc(100vw)] sm:max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-none sm:rounded-2xl shadow-2xl border dark:border-gray-700 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between bg-green-700 dark:bg-gray-700 text-white px-4 py-3">
             <div className="flex items-center gap-2">
               <Bot className="w-5 h-5" />
@@ -93,7 +93,7 @@ export const ChatWidget: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-96" style={{ minHeight: 300 }}>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ minHeight: 200, maxHeight: 'calc(100vh - 8rem)' }}>
             {messages.map((msg, i) => (
               <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                 {msg.role === 'assistant' && (

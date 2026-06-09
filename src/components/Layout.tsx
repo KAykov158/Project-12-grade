@@ -115,7 +115,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </button>
 
                 {showNotifDropdown && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl border dark:border-gray-600 z-50 overflow-hidden">
+                  <div className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-16 sm:top-full sm:mt-2 w-auto sm:w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl border dark:border-gray-600 z-50 overflow-hidden">
                     <div className="flex justify-between items-center px-4 py-3 border-b dark:border-gray-600">
                       <h3 className="font-semibold text-sm dark:text-gray-100">Notifications</h3>
                       {unreadCount > 0 && (
