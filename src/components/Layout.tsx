@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { notificationsService, usersService } from '../supabase';
 import { Notification } from '../types';
-import { LayoutDashboard, Trophy, Users, UserCircle, Calendar as CalendarIcon, Bell, LogOut, Moon, Sun, Settings, BellRing } from 'lucide-react';
+import { LayoutDashboard, Trophy, Users, Calendar as CalendarIcon, Bell, LogOut, Moon, Sun, Settings, BellRing } from 'lucide-react';
 import { ChatWidget } from './ChatWidget';
 
 interface LayoutProps {

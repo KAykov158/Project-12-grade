@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Shield, ArrowRight, LogOut, Smartphone } from 'lucide-react';
+import { ArrowRight, LogOut, Smartphone } from 'lucide-react';
 
 export const TwoFactorVerifyPage: React.FC = () => {
   const { pendingTwoFactor, verifyTwoFactorCode, logout, currentUser } = useAuth();

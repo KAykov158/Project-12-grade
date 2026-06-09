@@ -28,6 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [pendingTwoFactor, setPendingTwoFactor] = useState(false);
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
+  const needsEmailVerificationRef = useRef(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const userUnsubRef = useRef<(() => void) | null>(null);
   const resolvedRef = useRef(false);
@@ -41,13 +42,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUserData(profile);
     userUnsubRef.current = usersService.subscribeById(profile.id, setUserData);
-  }, []);
-
-  const finishLoading = useCallback(() => {
-    if (!resolvedRef.current) {
-      resolvedRef.current = true;
-      setLoading(false);
-    }
   }, []);
 
   const resolveUser = useCallback(async (supabaseUser: SupabaseUser | null) => {
@@ -82,7 +76,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             profile.email = supabaseUser.email;
           }
 
-          if (needsEmailVerification) setNeedsEmailVerification(false);
+          if (needsEmailVerificationRef.current) {
+            needsEmailVerificationRef.current = false;
+            setNeedsEmailVerification(false);
+          }
 
           if (window.location.hash.includes('type=recovery')) {
             pendingProfileRef.current = null;
@@ -177,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!data.user) throw new Error('Registration failed');
 
     if (!data.user.email_confirmed_at) {
+      needsEmailVerificationRef.current = true;
       setNeedsEmailVerification(true);
       return email;
     }
@@ -248,6 +246,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     pendingProfileRef.current = null;
     twoFactorVerifiedRef.current = false;
     setPendingTwoFactor(false);
+    needsEmailVerificationRef.current = false;
+    setNeedsEmailVerification(false);
     await supabase.auth.signOut();
   };
 

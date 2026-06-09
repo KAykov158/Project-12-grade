@@ -58,7 +58,11 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (currentUser) {
-      navigate('/');
+      if (sessionStorage.getItem('pendingAccept') || sessionStorage.getItem('pendingDecline')) {
+        navigate('/matches');
+      } else {
+        navigate('/');
+      }
     }
   }, [currentUser, navigate]);
 

@@ -5,7 +5,7 @@ import { teamsService, usersService, playersService } from '../supabase';
 import { Team, User, Player, LeagueType, LEAGUES } from '../types';
 import {
   Plus, Edit2, Trash2, Search, ChevronDown, ChevronUp, Users,
-  UserCircle, Check, X, Shield, Calendar, Flag, Camera
+  UserCircle, Check, X, Shield, Flag
 } from 'lucide-react';
 
 export const TeamsPage: React.FC = () => {
@@ -223,8 +223,7 @@ export const TeamsPage: React.FC = () => {
         assistantCoaches: [...team.assistantCoaches, userId]
       });
       setShowAssistantDropdown(null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch {
       alert('Could not add assistant coach. Make sure the database has the assistant_coaches column: ALTER TABLE teams ADD COLUMN assistant_coaches JSONB DEFAULT \'[]\'::jsonb;');
     }
   };
@@ -236,8 +235,7 @@ export const TeamsPage: React.FC = () => {
       await teamsService.update(teamId, {
         assistantCoaches: team.assistantCoaches.filter(id => id !== userId)
       });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch {
       alert('Could not update assistant coaches. Make sure the database has the assistant_coaches column: ALTER TABLE teams ADD COLUMN assistant_coaches JSONB DEFAULT \'[]\'::jsonb;');
     }
   };

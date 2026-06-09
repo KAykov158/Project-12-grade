@@ -40,7 +40,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   
   if (pendingTwoFactor) return <Navigate to="/verify-2fa" />;
   
-  return currentUser ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+  if (!currentUser) {
+    const params = new URLSearchParams(window.location.search);
+    const accept = params.get('accept');
+    const decline = params.get('decline');
+    if (accept) sessionStorage.setItem('pendingAccept', accept);
+    if (decline) sessionStorage.setItem('pendingDecline', decline);
+    return <Navigate to="/login" />;
+  }
+  
+  return <Layout>{children}</Layout>;
 };
 
 export const App: React.FC = () => {

@@ -80,12 +80,20 @@ export interface CardEvent {
   player: string;
 }
 
+export interface SubstitutionEvent {
+  team: 'home' | 'away';
+  minute: number;
+  playerOut: string;
+  playerIn: string;
+}
+
 export interface MatchResult {
   homeScore: number;
   awayScore: number;
   goals: GoalEvent[];
   yellowCards: CardEvent[];
   redCards: CardEvent[];
+  substitutions: SubstitutionEvent[];
   description?: string;
 }
 

@@ -14,7 +14,7 @@ type SettingsTab = 'profile' | 'security' | 'appearance';
 
 export const SettingsPage: React.FC = () => {
   const { currentUser, userData, isRecoveryMode, updatePassword, resetPassword } = useAuth();
-  const { dark, toggle, setDark } = useTheme();
+  const { dark, setDark } = useTheme();
   const [tab, setTab] = useState<SettingsTab>('profile');
 
   const [nickname, setNickname] = useState('');
